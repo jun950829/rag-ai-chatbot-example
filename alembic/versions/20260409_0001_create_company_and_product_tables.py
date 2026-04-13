@@ -17,6 +17,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # drop table ( company and product 가 있다면, 없으면 무시)
+    op.execute("DROP TABLE IF EXISTS company")
+    op.execute("DROP TABLE IF EXISTS product")
+
     op.create_table(
         "company",
         sa.Column("id", sa.Uuid(), nullable=False),
