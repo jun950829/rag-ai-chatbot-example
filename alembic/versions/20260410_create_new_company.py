@@ -1,6 +1,6 @@
 """create new_company table
 
-Revision ID: 20260409_create_new_company
+Revision ID: 20260410_create_new_company
 Revises: 20260403_0001
 Create Date: 2026-04-09 00:00:00
 """
@@ -10,13 +10,17 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260409_create_new_company"
+revision = "20260410_create_new_company"
 down_revision = "20260403_0001"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
+    # drop table ( company and product 가 있다면, 없으면 무시)
+    op.execute("DROP TABLE IF EXISTS product")
+    op.execute("DROP TABLE IF EXISTS company")
+    
     op.create_table(
         "new_company",
         sa.Column("id", sa.Uuid(), nullable=False),
