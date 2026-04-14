@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import threading
 import uuid
 from pathlib import Path
 from typing import Any, Optional
+from urllib import request as urllib_request
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -39,6 +41,69 @@ def _job_set(job_id: str, **fields: Any) -> None:
     with JOB_LOCK:
         rec = JOB_STORE.setdefault(job_id, {})
         rec.update(fields)
+
+
+def _format_search_context(results: list[dict[str, Any]], *, limit: int = 5) -> str:
+    lines: list[str] = []
+    for i, r in enumerate(results[:limit], start=1):
+        score = r.get("score")
+        score_txt = f"{float(score):.4f}" if isinstance(score, (int, float)) else "-"
+        content = (r.get("content") or "").strip().replace("\n", " / ")
+        if len(content) > 220:
+            content = content[:220].rstrip() + "..."
+        lines.append(
+            f"[{i}] score={score_txt}, lang={r.get('lang')}, type={r.get('chunk_typ')}, "
+            f"external_id={r.get('external_id')}, source_field={r.get('source_field')}, content={content}"
+        )
+    return "\n".join(lines)
+
+
+def _generate_korean_answer_with_ollama(
+    *,
+    query: str,
+    results: list[dict[str, Any]],
+    model: str,
+    base_url: str,
+    timeout_sec: int = 90,
+) -> str:
+    if not results:
+        return "검색 결과가 없어 답변을 생성할 수 없습니다."
+
+    context_text = _format_search_context(results, limit=6)
+    payload = {
+        "model": model,
+        "stream": False,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "너는 전시 참가업체 검색 도우미다. 반드시 한국어로 답한다. "
+                    "주어진 검색 결과만 근거로 요약하고, 모르면 모른다고 답한다. "
+                    "답변은 3~5문장으로 간결하게 작성한다."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"질문: {query}\n\n"
+                    f"검색 결과:\n{context_text}\n\n"
+                    "요청: 질문에 가장 적합한 업체를 한국어로 추천하고, 근거를 함께 설명해줘."
+                ),
+            },
+        ],
+    }
+
+    endpoint = base_url.rstrip("/") + "/api/chat"
+    req = urllib_request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
+        body = resp.read().decode("utf-8")
+    data = json.loads(body)
+    return ((data.get("message") or {}).get("content") or "").strip() or "LLM이 빈 답변을 반환했습니다."
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -196,6 +261,9 @@ async def search_embeddings(
     top_k: int = Form(default=10),
     lang: str = Form(default="all"),
     chunk_type: str = Form(default="all"),
+    answer_mode: str = Form(default="template"),
+    llm_model: str = Form(default=os.environ.get("OLLAMA_MODEL", "qwen2.5:3b-instruct")),
+    llm_base_url: str = Form(default=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")),
 ) -> JSONResponse:
     if not (query or "").strip():
         raise HTTPException(status_code=400, detail="검색어가 비어 있습니다.")
@@ -203,6 +271,8 @@ async def search_embeddings(
         raise HTTPException(status_code=400, detail="lang must be one of: all, kor, eng")
     if chunk_type not in {"all", "profile", "evidence"}:
         raise HTTPException(status_code=400, detail="chunk_type must be one of: all, profile, evidence")
+    if answer_mode not in {"template", "ollama"}:
+        raise HTTPException(status_code=400, detail="answer_mode must be one of: template, ollama")
 
     try:
         qvec = embed_query_text(query, model_id=model_id, device=device or None)
@@ -217,6 +287,24 @@ async def search_embeddings(
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"임베딩 모델 로드 실패: {e}") from e
 
+    answer_korean = build_korean_search_answer(query, results)
+    answer_meta: dict[str, Any] = {"mode": "template"}
+    if answer_mode == "ollama":
+        try:
+            answer_korean = _generate_korean_answer_with_ollama(
+                query=query,
+                results=results,
+                model=llm_model,
+                base_url=llm_base_url,
+            )
+            answer_meta = {"mode": "ollama", "model": llm_model, "base_url": llm_base_url}
+        except Exception as e:
+            answer_korean = (
+                f"[LLM 호출 실패로 템플릿 응답으로 대체] {build_korean_search_answer(query, results)} "
+                f"(원인: {e})"
+            )
+            answer_meta = {"mode": "template_fallback", "error": str(e), "requested_mode": "ollama"}
+
     return JSONResponse(
         {
             "query": query,
@@ -224,7 +312,8 @@ async def search_embeddings(
             "lang": lang,
             "chunk_type": chunk_type,
             "count": len(results),
-            "answer_korean": build_korean_search_answer(query, results),
+            "answer_korean": answer_korean,
+            "answer_meta": answer_meta,
             "results": results,
         }
     )

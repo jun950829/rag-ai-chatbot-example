@@ -128,6 +128,21 @@
               <option value="evidence">evidence</option>
             </select>
           </div>
+          <div class="row">
+            <label for="answer_mode">응답 생성 방식</label>
+            <select id="answer_mode" name="answer_mode">
+              <option value="template">template (규칙기반, 빠름)</option>
+              <option value="ollama">ollama (로컬 무료 LLM)</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="llm_model">LLM Model (Ollama)</label>
+            <input id="llm_model" type="text" name="llm_model" value="qwen2.5:3b-instruct" />
+          </div>
+          <div class="row">
+            <label for="llm_base_url">Ollama Base URL</label>
+            <input id="llm_base_url" type="text" name="llm_base_url" value="http://localhost:11434" />
+          </div>
           <button type="submit" id="search_btn">검색 실행</button>
         </form>
         <div id="search_error"></div>
@@ -290,8 +305,10 @@
   function renderSearchResults(payload) {
     const items = payload.results || [];
     const answer = payload.answer_korean || "";
+    const answerMeta = payload.answer_meta || {};
+    const metaText = (answerMeta.mode ? (" (" + answerMeta.mode + (answerMeta.model ? (", " + answerMeta.model) : "") + ")") : "");
     if (!items.length) {
-      searchResult.innerHTML = "<p><strong>답변:</strong> " + answer + "</p><p class='muted'>결과가 없습니다.</p>";
+      searchResult.innerHTML = "<p><strong>답변:</strong> " + answer + metaText + "</p><p class='muted'>결과가 없습니다.</p>";
       return;
     }
     const rows = items.map(function (r) {
@@ -310,7 +327,7 @@
     }).join("");
 
     searchResult.innerHTML =
-      "<p><strong>답변:</strong> " + answer + "</p>" +
+      "<p><strong>답변:</strong> " + answer + metaText + "</p>" +
       "<div><strong>검색 결과</strong> " +
       "(count: <code>" + (payload.count || 0) + "</code>, top_k: <code>" + (payload.top_k || 0) + "</code>)</div>" +
       "<table><thead><tr>" +

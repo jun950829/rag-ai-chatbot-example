@@ -581,18 +581,27 @@ def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str
     if not results:
         return f"'{q}'와(과) 관련된 업체를 찾지 못했습니다. 검색어를 더 구체적으로 입력해 주세요."
 
-    top = results[0]
-    ext = (top.get("external_id") or "").strip() or "외부 ID 없음"
-    lang = top.get("lang") or "-"
-    ctyp = top.get("chunk_typ") or "-"
-    score = top.get("score")
-    score_text = f"{float(score):.3f}" if isinstance(score, (int, float)) else "-"
-    content = (top.get("content") or "").strip().replace("\n", " / ")
-    if len(content) > 180:
-        content = content[:180].rstrip() + "..."
+    # Prefer profile chunks so the answer area shows company profile-like data directly.
+    profiles = [r for r in results if (r.get("chunk_typ") == "profile")]
+    candidates = profiles if profiles else results
 
-    return (
-        f"검색어 '{q}'에 가장 가까운 결과는 external_id '{ext}' 업체입니다. "
-        f"(유사도={score_text}, lang={lang}, 유형={ctyp}) "
-        f"관련 근거: {content}"
-    )
+    lines: list[str] = [f"[검색어] {q}", "[프로필 데이터]"]
+    seen_external_ids: set[str] = set()
+    for r in candidates:
+        ext = (r.get("external_id") or "").strip() or "외부 ID 없음"
+        if ext in seen_external_ids:
+            continue
+        seen_external_ids.add(ext)
+        content = (r.get("content") or "").strip()
+        if not content:
+            continue
+        score = r.get("score")
+        score_text = f"{float(score):.3f}" if isinstance(score, (int, float)) else "-"
+        lines.append(f"- external_id: {ext} (score={score_text}, lang={r.get('lang')})")
+        lines.append(content)
+        if len(seen_external_ids) >= 3:
+            break
+
+    if len(lines) <= 2:
+        return f"[검색어] {q}\n[프로필 데이터]\n- 표시할 profile 데이터가 없습니다."
+    return "\n".join(lines)
