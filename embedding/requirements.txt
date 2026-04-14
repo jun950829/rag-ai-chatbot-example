@@ -3,6 +3,8 @@ uvicorn[standard]>=0.32,<1.0
 python-multipart>=0.0.9,<1.0
 jinja2>=3.1,<4.0
 sentence-transformers==5.1.2
+transformers>=4.57.0,<5.0
+qwen-vl-utils>=0.0.14,<1.0
 SQLAlchemy>=2.0,<3.0
 psycopg[binary]>=3.2,<4.0
 pydantic-settings>=2.6,<3.0

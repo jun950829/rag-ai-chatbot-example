@@ -1,243 +1,44 @@
 from __future__ import annotations
 
-import io
-import json
+import asyncio
 import os
 import sys
+import threading
 import uuid
-import zipfile
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-import sqlalchemy as sa
 
+_BASE = Path(__file__).resolve().parent
+_ROOT = _BASE.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
-BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+from embedding.pipeline import (
+    DEFAULT_EMBEDDING_DEVICE,
+    DEFAULT_EMBEDDING_MODEL_ID,
+    _build_embeddings,
+    _fetch_new_company_rows,
+    _upsert_embeddings,
+    build_korean_search_answer,
+    embed_query_text,
+    search_embedding_tables,
+)
 
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates = Jinja2Templates(directory=str(_BASE / "templates"))
 app = FastAPI(title="Local Embedding Tool", version="0.1.0")
 
-from app.db import engine  # noqa: E402
+JOB_LOCK = threading.Lock()
+JOB_STORE: dict[str, dict[str, Any]] = {}
 
 
-PROFILE_BASE_COLUMNS: tuple[str, ...] = (
-    "homepage",
-    "exhibit_year",
-    "exhibition_category_label",
-    "booth_number",
-    "country_code",
-    "exhibit_hall_code",
-)
-PROFILE_KOR_COLUMNS: tuple[str, ...] = ("company_name_kor", "country_label_kor", "exhibit_hall_label_kor")
-PROFILE_ENG_COLUMNS: tuple[str, ...] = ("company_name_eng", "country_label_eng", "exhibit_hall_label_eng")
-
-
-def _safe_str(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _is_kor_col(name: str) -> bool:
-    return "_kor" in name
-
-
-def _is_eng_col(name: str) -> bool:
-    return "_eng" in name
-
-
-def _chunk_text(text: str, *, max_chars: int, overlap: int) -> list[str]:
-    text = text.strip()
-    if not text:
-        return []
-    if len(text) <= max_chars:
-        return [text]
-
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        end = min(len(text), start + max_chars)
-        piece = text[start:end].strip()
-        if piece:
-            chunks.append(piece)
-        if end >= len(text):
-            break
-        start = max(0, end - overlap)
-    return chunks
-
-
-@lru_cache(maxsize=2)
-def _get_model(model_id: str, device: str | None):
-    from sentence_transformers import SentenceTransformer
-
-    kwargs: dict[str, Any] = {"trust_remote_code": True}
-    if device:
-        kwargs["device"] = device
-    return SentenceTransformer(model_id, **kwargs)
-
-
-def _to_jsonl(records: list[dict[str, Any]]) -> str:
-    return "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
-
-
-def _encode(embedder, texts: list[str], *, batch_size: int) -> list[list[float]]:
-    vectors = embedder.encode(
-        texts,
-        batch_size=batch_size,
-        normalize_embeddings=True,
-        convert_to_numpy=True,
-        show_progress_bar=False,
-    )
-    return [v.astype("float32").tolist() for v in vectors]
-
-
-def _profile_text(row: dict[str, str], *, lang: str) -> str:
-    cols = list(PROFILE_BASE_COLUMNS)
-    if lang == "kor":
-        cols.extend(PROFILE_KOR_COLUMNS)
-    else:
-        cols.extend(PROFILE_ENG_COLUMNS)
-    lines = [f"{c}: {_safe_str(row.get(c))}" for c in cols if _safe_str(row.get(c))]
-    return "\n".join(lines).strip()
-
-
-def _evidence_chunks(
-    row: dict[str, str],
-    *,
-    lang: str,
-    max_chars: int,
-    overlap: int,
-) -> list[dict[str, Any]]:
-    skip = set(PROFILE_BASE_COLUMNS) | set(PROFILE_KOR_COLUMNS) | set(PROFILE_ENG_COLUMNS)
-    chunks: list[dict[str, Any]] = []
-    for col, raw in row.items():
-        if col in skip:
-            continue
-        value = _safe_str(raw)
-        if not value:
-            continue
-
-        # language split:
-        # - kor table: kor + neutral columns
-        # - eng table: eng + neutral columns
-        if lang == "kor" and _is_eng_col(col):
-            continue
-        if lang == "eng" and _is_kor_col(col):
-            continue
-
-        base = f"{col}: {value}"
-        for idx, piece in enumerate(_chunk_text(base, max_chars=max_chars, overlap=overlap)):
-            chunks.append({"source_field": col, "chunk_index": idx, "content": piece})
-    return chunks
-
-
-def _build_embeddings(
-    rows: list[dict[str, str]],
-    *,
-    model_id: str,
-    batch_size: int,
-    device: str | None,
-    max_chars: int,
-    overlap: int,
-) -> dict[str, list[dict[str, Any]]]:
-    embedder = _get_model(model_id, device)
-    outputs: dict[str, list[dict[str, Any]]] = {
-        "new_company_profile_embedding_tbd_kor": [],
-        "new_company_profile_embedding_tbd_eng": [],
-        "new_company_evidence_embedding_tbd_kor": [],
-        "new_company_evidence_embedding_tbd_eng": [],
-    }
-
-    profile_jobs: list[tuple[str, dict[str, Any], str]] = []
-    evidence_jobs: list[tuple[str, dict[str, Any], str]] = []
-
-    for i, row in enumerate(rows):
-        new_company_id = row.get("id") or row.get("external_id") or f"row-{i+1}"
-        external_id = row.get("external_id") or ""
-
-        for lang in ("kor", "eng"):
-            ptxt = _profile_text(row, lang=lang)
-            if ptxt:
-                profile_jobs.append(
-                    (
-                        f"new_company_profile_embedding_tbd_{lang}",
-                        {
-                            "id": str(uuid.uuid4()),
-                            "new_company_id": new_company_id,
-                            "external_id": external_id,
-                            "lang": lang,
-                            "content": ptxt,
-                            "model": model_id,
-                        },
-                        ptxt,
-                    )
-                )
-
-            for ev in _evidence_chunks(row, lang=lang, max_chars=max_chars, overlap=overlap):
-                evidence_jobs.append(
-                    (
-                        f"new_company_evidence_embedding_tbd_{lang}",
-                        {
-                            "id": str(uuid.uuid4()),
-                            "new_company_id": new_company_id,
-                            "external_id": external_id,
-                            "lang": lang,
-                            "source_field": ev["source_field"],
-                            "chunk_index": ev["chunk_index"],
-                            "content": ev["content"],
-                            "model": model_id,
-                        },
-                        ev["content"],
-                    )
-                )
-
-    if profile_jobs:
-        vectors = _encode(embedder, [t for _, _, t in profile_jobs], batch_size=batch_size)
-        for (table, rec, _), vec in zip(profile_jobs, vectors, strict=True):
-            rec["embedding_dim"] = len(vec)
-            rec["embedding"] = vec
-            outputs[table].append(rec)
-
-    if evidence_jobs:
-        vectors = _encode(embedder, [t for _, _, t in evidence_jobs], batch_size=batch_size)
-        for (table, rec, _), vec in zip(evidence_jobs, vectors, strict=True):
-            rec["embedding_dim"] = len(vec)
-            rec["embedding"] = vec
-            outputs[table].append(rec)
-
-    return outputs
-
-
-def _fetch_new_company_rows(limit: int | None) -> list[dict[str, str]]:
-    metadata = sa.MetaData()
-    new_company = sa.Table("new_company", metadata, autoload_with=engine)
-
-    stmt = sa.select(new_company)
-    if "created_at" in new_company.c:
-        stmt = stmt.order_by(new_company.c.created_at.asc())
-    if limit is not None:
-        stmt = stmt.limit(limit)
-
-    rows: list[dict[str, str]] = []
-    with engine.connect() as conn:
-        result = conn.execute(stmt).mappings().all()
-        for record in result:
-            row: dict[str, str] = {}
-            for col in new_company.columns:
-                value = record.get(col.name)
-                if isinstance(value, list):
-                    row[col.name] = ", ".join(str(v) for v in value)
-                else:
-                    row[col.name] = "" if value is None else str(value)
-            rows.append(row)
-    return rows
+def _job_set(job_id: str, **fields: Any) -> None:
+    with JOB_LOCK:
+        rec = JOB_STORE.setdefault(job_id, {})
+        rec.update(fields)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -245,43 +46,185 @@ def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/embed")
-async def embed_csv(
-    model_id: str = Form(default=os.environ.get("EMBEDDING_MODEL_ID", "Qwen/Qwen3-VL-Embedding-2B")),
+async def _run_embed_job_async(
+    job_id: str,
+    rows: list[dict[str, str]],
+    model_id: str,
+    batch_size: int,
+    entity_batch_size: int,
+    device: Optional[str],
+    evidence_max_chars: int,
+    evidence_overlap: int,
+) -> None:
+    def work() -> Optional[dict[str, Any]]:
+        def progress(message: str, percent: int) -> None:
+            _job_set(job_id, status="running", message=message, percent=min(99, percent))
+
+        try:
+            progress("임베딩 파이프라인 시작", 4)
+            results = _build_embeddings(
+                rows,
+                model_id=model_id,
+                batch_size=batch_size,
+                entity_batch_size=entity_batch_size,
+                device=device,
+                max_chars=evidence_max_chars,
+                overlap=evidence_overlap,
+                progress=progress,
+            )
+            progress("DB 적재(upsert) 시작", 95)
+            upsert_counts = _upsert_embeddings(results, progress=progress)
+            return {
+                "rows_in_new_company": len(rows),
+                "upsert_counts": upsert_counts,
+                "total_upserted": sum(upsert_counts.values()),
+            }
+        except ImportError as e:
+            _job_set(
+                job_id,
+                status="error",
+                message="필요 패키지가 없습니다 (Qwen3-VL 경로)",
+                percent=0,
+                error_detail=str(e),
+            )
+            return None
+        except Exception as e:
+            _job_set(job_id, status="error", message=str(e), percent=0, error_detail=str(e))
+            return None
+
+    summary = await asyncio.to_thread(work)
+    if summary is not None:
+        _job_set(
+            job_id,
+            status="done",
+            message="임베딩 및 DB 적재가 완료되었습니다.",
+            percent=100,
+            result=summary,
+        )
+
+
+@app.post("/embed/job")
+async def start_embed_job(
+    background_tasks: BackgroundTasks,
+    model_id: str = Form(default=os.environ.get("EMBEDDING_MODEL_ID", DEFAULT_EMBEDDING_MODEL_ID)),
     batch_size: int = Form(default=8),
-    device: str = Form(default="cpu"),
+    entity_batch_size: int = Form(default=64),
+    device: str = Form(default=DEFAULT_EMBEDDING_DEVICE),
     evidence_max_chars: int = Form(default=1200),
     evidence_overlap: int = Form(default=150),
     limit: Optional[int] = Form(default=None),
-) -> StreamingResponse:
+) -> JSONResponse:
     rows = _fetch_new_company_rows(limit)
     if not rows:
         raise HTTPException(status_code=400, detail="new_company 테이블에 데이터가 없습니다.")
 
-    results = _build_embeddings(
+    job_id = str(uuid.uuid4())
+    _job_set(job_id, status="queued", message="작업이 대기열에 등록되었습니다.", percent=0)
+    background_tasks.add_task(
+        _run_embed_job_async,
+        job_id,
         rows,
-        model_id=model_id,
-        batch_size=batch_size,
-        device=device or None,
-        max_chars=evidence_max_chars,
-        overlap=evidence_overlap,
+        model_id,
+        batch_size,
+        entity_batch_size,
+        device or None,
+        evidence_max_chars,
+        evidence_overlap,
     )
+    return JSONResponse({"job_id": job_id})
 
-    out = io.BytesIO()
-    with zipfile.ZipFile(out, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for table_name, records in results.items():
-            zf.writestr(f"{table_name}.jsonl", _to_jsonl(records))
-        summary = {
-            "model_id": model_id,
+
+@app.get("/embed/job/{job_id}/status")
+def embed_job_status(job_id: str) -> JSONResponse:
+    with JOB_LOCK:
+        job = JOB_STORE.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
+    return JSONResponse(job)
+
+
+@app.post("/embed")
+async def embed_sync(
+    model_id: str = Form(default=os.environ.get("EMBEDDING_MODEL_ID", DEFAULT_EMBEDDING_MODEL_ID)),
+    batch_size: int = Form(default=8),
+    entity_batch_size: int = Form(default=64),
+    device: str = Form(default=DEFAULT_EMBEDDING_DEVICE),
+    evidence_max_chars: int = Form(default=1200),
+    evidence_overlap: int = Form(default=150),
+    limit: Optional[int] = Form(default=None),
+) -> JSONResponse:
+    rows = _fetch_new_company_rows(limit)
+    if not rows:
+        raise HTTPException(status_code=400, detail="new_company 테이블에 데이터가 없습니다.")
+
+    try:
+        results = _build_embeddings(
+            rows,
+            model_id=model_id,
+            batch_size=batch_size,
+            entity_batch_size=entity_batch_size,
+            device=device or None,
+            max_chars=evidence_max_chars,
+            overlap=evidence_overlap,
+        )
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Qwen3-VL-Embedding 모델에 필요한 패키지가 없습니다. "
+                "예: pip install 'transformers>=4.57' 'qwen-vl-utils>=0.0.14'. "
+                f"원인: {e}"
+            ),
+        ) from e
+
+    upsert_counts = _upsert_embeddings(results)
+    return JSONResponse(
+        {
+            "status": "done",
             "rows_in_new_company": len(rows),
-            "counts": {k: len(v) for k, v in results.items()},
+            "upsert_counts": upsert_counts,
+            "total_upserted": sum(upsert_counts.values()),
         }
-        zf.writestr("summary.json", json.dumps(summary, ensure_ascii=False, indent=2))
-
-    out.seek(0)
-    return StreamingResponse(
-        out,
-        media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=new_company_embeddings_split.zip"},
     )
 
+
+@app.post("/search")
+async def search_embeddings(
+    query: str = Form(...),
+    model_id: str = Form(default=os.environ.get("EMBEDDING_MODEL_ID", DEFAULT_EMBEDDING_MODEL_ID)),
+    device: str = Form(default=DEFAULT_EMBEDDING_DEVICE),
+    top_k: int = Form(default=10),
+    lang: str = Form(default="all"),
+    chunk_type: str = Form(default="all"),
+) -> JSONResponse:
+    if not (query or "").strip():
+        raise HTTPException(status_code=400, detail="검색어가 비어 있습니다.")
+    if lang not in {"all", "kor", "eng"}:
+        raise HTTPException(status_code=400, detail="lang must be one of: all, kor, eng")
+    if chunk_type not in {"all", "profile", "evidence"}:
+        raise HTTPException(status_code=400, detail="chunk_type must be one of: all, profile, evidence")
+
+    try:
+        qvec = embed_query_text(query, model_id=model_id, device=device or None)
+        results = search_embedding_tables(
+            query_embedding=qvec,
+            top_k=top_k,
+            lang=lang,
+            chunk_type=chunk_type,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"임베딩 모델 로드 실패: {e}") from e
+
+    return JSONResponse(
+        {
+            "query": query,
+            "top_k": max(1, int(top_k)),
+            "lang": lang,
+            "chunk_type": chunk_type,
+            "count": len(results),
+            "answer_korean": build_korean_search_answer(query, results),
+            "results": results,
+        }
+    )
