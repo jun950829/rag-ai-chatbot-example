@@ -6,6 +6,7 @@ import hashlib
 import os
 import sys
 import uuid
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -20,10 +21,34 @@ if str(PROJECT_ROOT) not in sys.path:
 
 DEFAULT_EMBEDDING_MODEL_ID = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_DEVICE = os.environ.get("EMBEDDING_DEVICE", "mps")
-PROFILE_TABLE_KOR = "new_company_profile_embedding_qwen3_0_6b_kor"
-PROFILE_TABLE_ENG = "new_company_profile_embedding_qwen3_0_6b_eng"
-EVIDENCE_TABLE_KOR = "new_company_evidence_embedding_qwen3_0_6b_kor"
-EVIDENCE_TABLE_ENG = "new_company_evidence_embedding_qwen3_0_6b_eng"
+
+
+@dataclass(frozen=True)
+class ModelTableSet:
+    profile_kor: str
+    profile_eng: str
+    evidence_kor: str
+    evidence_eng: str
+
+
+QWEN_TABLE_SET = ModelTableSet(
+    profile_kor="new_company_profile_embedding_qwen3_0_6b_kor",
+    profile_eng="new_company_profile_embedding_qwen3_0_6b_eng",
+    evidence_kor="new_company_evidence_embedding_qwen3_0_6b_kor",
+    evidence_eng="new_company_evidence_embedding_qwen3_0_6b_eng",
+)
+BGE_M3_TABLE_SET = ModelTableSet(
+    profile_kor="new_company_profile_embedding_bge_m3_kor",
+    profile_eng="new_company_profile_embedding_bge_m3_eng",
+    evidence_kor="new_company_evidence_embedding_bge_m3_kor",
+    evidence_eng="new_company_evidence_embedding_bge_m3_eng",
+)
+
+# Backward-compatible aliases for older imports/scripts.
+PROFILE_TABLE_KOR = QWEN_TABLE_SET.profile_kor
+PROFILE_TABLE_ENG = QWEN_TABLE_SET.profile_eng
+EVIDENCE_TABLE_KOR = QWEN_TABLE_SET.evidence_kor
+EVIDENCE_TABLE_ENG = QWEN_TABLE_SET.evidence_eng
 
 _UPSERT_ROWS_PER_EXECUTE = 1000
 
@@ -124,6 +149,13 @@ def _vector_literal(vec: list[float]) -> str:
 def _is_qwen3_vl_embedding_model(model_id: str) -> bool:
     m = model_id.lower()
     return "qwen3-vl-embedding" in m
+
+
+def _table_set_for_model(model_id: str) -> ModelTableSet:
+    m = (model_id or "").strip().lower()
+    if "bge-m3" in m:
+        return BGE_M3_TABLE_SET
+    return QWEN_TABLE_SET
 
 
 @lru_cache(maxsize=4)
@@ -235,11 +267,12 @@ def _build_embeddings(
         if progress:
             progress(message, percent)
 
+    table_set = _table_set_for_model(model_id)
     outputs: dict[str, list[dict[str, Any]]] = {
-        "new_company_profile_embedding_qwen3_0_6b_kor": [],
-        "new_company_profile_embedding_qwen3_0_6b_eng": [],
-        "new_company_evidence_embedding_qwen3_0_6b_kor": [],
-        "new_company_evidence_embedding_qwen3_0_6b_eng": [],
+        table_set.profile_kor: [],
+        table_set.profile_eng: [],
+        table_set.evidence_kor: [],
+        table_set.evidence_eng: [],
     }
 
     entity_batch_size = max(1, int(entity_batch_size))
@@ -274,7 +307,7 @@ def _build_embeddings(
                 if ptxt:
                     all_jobs.append(
                         (
-                            f"new_company_profile_embedding_qwen3_0_6b_{lang}",
+                            table_set.profile_kor if lang == "kor" else table_set.profile_eng,
                             {
                                 "id": str(uuid.uuid4()),
                                 "new_company_id": new_company_id,
@@ -290,7 +323,7 @@ def _build_embeddings(
                 for ev in _evidence_chunks(row, lang=lang, max_chars=max_chars, overlap=overlap):
                     all_jobs.append(
                         (
-                            f"new_company_evidence_embedding_qwen3_0_6b_{lang}",
+                            table_set.evidence_kor if lang == "kor" else table_set.evidence_eng,
                             {
                                 "id": str(uuid.uuid4()),
                                 "new_company_id": new_company_id,
@@ -326,7 +359,7 @@ def _build_embeddings(
                 outputs[table].append(rec)
 
         p(
-            f"엔티티 배치 {bi}/{total_entity_batches} 완료 (누적 profile={len(outputs['new_company_profile_embedding_qwen3_0_6b_kor']) + len(outputs['new_company_profile_embedding_qwen3_0_6b_eng'])}, evidence={len(outputs['new_company_evidence_embedding_qwen3_0_6b_kor']) + len(outputs['new_company_evidence_embedding_qwen3_0_6b_eng'])})",
+            f"엔티티 배치 {bi}/{total_entity_batches} 완료 (누적 profile={len(outputs[table_set.profile_kor]) + len(outputs[table_set.profile_eng])}, evidence={len(outputs[table_set.evidence_kor]) + len(outputs[table_set.evidence_eng])})",
             _batch_pct(1),
         )
 
@@ -335,9 +368,9 @@ def _build_embeddings(
     return outputs
 
 
-def _embedding_ddl_statements() -> list[str]:
+def _embedding_ddl_statements(table_set: ModelTableSet) -> list[str]:
     ddl: list[str] = ["CREATE EXTENSION IF NOT EXISTS vector"]
-    for table in (PROFILE_TABLE_KOR, PROFILE_TABLE_ENG, EVIDENCE_TABLE_KOR, EVIDENCE_TABLE_ENG):
+    for table in (table_set.profile_kor, table_set.profile_eng, table_set.evidence_kor, table_set.evidence_eng):
         ddl.append(
             f"""
             CREATE TABLE IF NOT EXISTS {table} (
@@ -368,19 +401,26 @@ def _embedding_ddl_statements() -> list[str]:
 def _upsert_embeddings(
     results: dict[str, list[dict[str, Any]]],
     *,
+    model_id: str,
     progress: Optional[Callable[[str, int], None]] = None,
 ) -> dict[str, int]:
     def p(message: str, percent: int) -> None:
         if progress:
             progress(message, percent)
 
+    table_set = _table_set_for_model(model_id)
     table_specs = [
-        (PROFILE_TABLE_KOR, results.get(PROFILE_TABLE_KOR, []), "profile"),
-        (PROFILE_TABLE_ENG, results.get(PROFILE_TABLE_ENG, []), "profile"),
-        (EVIDENCE_TABLE_KOR, results.get(EVIDENCE_TABLE_KOR, []), "evidence"),
-        (EVIDENCE_TABLE_ENG, results.get(EVIDENCE_TABLE_ENG, []), "evidence"),
+        (table_set.profile_kor, results.get(table_set.profile_kor, []), "profile"),
+        (table_set.profile_eng, results.get(table_set.profile_eng, []), "profile"),
+        (table_set.evidence_kor, results.get(table_set.evidence_kor, []), "evidence"),
+        (table_set.evidence_eng, results.get(table_set.evidence_eng, []), "evidence"),
     ]
-    counts: dict[str, int] = {PROFILE_TABLE_KOR: 0, PROFILE_TABLE_ENG: 0, EVIDENCE_TABLE_KOR: 0, EVIDENCE_TABLE_ENG: 0}
+    counts: dict[str, int] = {
+        table_set.profile_kor: 0,
+        table_set.profile_eng: 0,
+        table_set.evidence_kor: 0,
+        table_set.evidence_eng: 0,
+    }
     pending_batches: list[tuple[str, list[dict[str, Any]]]] = []
 
     total_tables = len(table_specs)
@@ -433,7 +473,7 @@ def _upsert_embeddings(
 
     p("DB 저장 중 (DDL + upsert)…", 97)
     with engine.begin() as conn:
-        for stmt in _embedding_ddl_statements():
+        for stmt in _embedding_ddl_statements(table_set):
             conn.execute(sa.text(stmt))
         for insert_sql, payloads in pending_batches:
             for start in range(0, len(payloads), _UPSERT_ROWS_PER_EXECUTE):
@@ -497,17 +537,19 @@ def embed_query_text(query: str, *, model_id: str, device: str | None) -> list[f
 def search_embedding_tables(
     *,
     query_embedding: list[float],
+    model_id: str,
     top_k: int,
     lang: str,
     chunk_type: str,
 ) -> list[dict[str, Any]]:
     top_k = max(1, int(top_k))
 
+    table_set = _table_set_for_model(model_id)
     all_specs = [
-        (PROFILE_TABLE_KOR, "profile", "kor"),
-        (PROFILE_TABLE_ENG, "profile", "eng"),
-        (EVIDENCE_TABLE_KOR, "evidence", "kor"),
-        (EVIDENCE_TABLE_ENG, "evidence", "eng"),
+        (table_set.profile_kor, "profile", "kor"),
+        (table_set.profile_eng, "profile", "eng"),
+        (table_set.evidence_kor, "evidence", "kor"),
+        (table_set.evidence_eng, "evidence", "eng"),
     ]
 
     selected: list[tuple[str, str, str]] = []

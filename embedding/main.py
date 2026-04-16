@@ -138,7 +138,7 @@ async def _run_embed_job_async(
                 progress=progress,
             )
             progress("DB 적재(upsert) 시작", 95)
-            upsert_counts = _upsert_embeddings(results, progress=progress)
+            upsert_counts = _upsert_embeddings(results, model_id=model_id, progress=progress)
             return {
                 "rows_in_new_company": len(rows),
                 "upsert_counts": upsert_counts,
@@ -242,7 +242,7 @@ async def embed_sync(
             ),
         ) from e
 
-    upsert_counts = _upsert_embeddings(results)
+    upsert_counts = _upsert_embeddings(results, model_id=model_id)
     return JSONResponse(
         {
             "status": "done",
@@ -278,6 +278,7 @@ async def search_embeddings(
         qvec = embed_query_text(query, model_id=model_id, device=device or None)
         results = search_embedding_tables(
             query_embedding=qvec,
+            model_id=model_id,
             top_k=top_k,
             lang=lang,
             chunk_type=chunk_type,

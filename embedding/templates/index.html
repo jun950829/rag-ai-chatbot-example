@@ -50,7 +50,10 @@
         <form id="embed-form">
           <div class="row">
             <label for="model_id">Model ID</label>
-            <input id="model_id" type="text" name="model_id" value="Qwen/Qwen3-Embedding-0.6B" />
+            <select id="model_id" name="model_id">
+              <option value="Qwen/Qwen3-Embedding-0.6B">Qwen/Qwen3-Embedding-0.6B</option>
+              <option value="BAAI/bge-m3">BAAI/bge-m3</option>
+            </select>
           </div>
           <div class="row">
             <label for="device">Device (cpu / mps / cuda)</label>
@@ -102,7 +105,10 @@
           </div>
           <div class="row">
             <label for="search_model_id">Model ID</label>
-            <input id="search_model_id" type="text" name="model_id" value="Qwen/Qwen3-Embedding-0.6B" />
+            <select id="search_model_id" name="model_id">
+              <option value="Qwen/Qwen3-Embedding-0.6B">Qwen/Qwen3-Embedding-0.6B</option>
+              <option value="BAAI/bge-m3">BAAI/bge-m3</option>
+            </select>
           </div>
           <div class="row">
             <label for="search_device">Device</label>
