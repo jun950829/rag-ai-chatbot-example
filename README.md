@@ -168,8 +168,17 @@ Optional local install without Docker:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-api.txt
 uvicorn app.main:app --reload
+```
+
+Embedding local app install:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn embedding.main:app --reload --port 8010
 ```
 
 Useful URLs:

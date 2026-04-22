@@ -36,6 +36,9 @@
       #search_result table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 12px; }
       #search_result th, #search_result td { border: 1px solid #ddd; padding: 6px; text-align: left; vertical-align: top; }
       .pill { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 11px; background: #f0f0f0; margin-right: 4px; }
+      .search-block { border: 1px solid #e4e4e4; border-radius: 8px; padding: 10px; margin-top: 10px; }
+      .search-log-line { margin: 6px 0; line-height: 1.45; font-size: 13px; }
+      .search-log-data { white-space: pre-wrap; background: #f9f9f9; border-radius: 6px; padding: 8px; font-size: 12px; color: #333; }
       @keyframes pulse { 0%, 100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1); } }
       @media (max-width: 1000px) { .layout { flex-direction: column; } .col { width: 100%; } }
     </style>
@@ -312,9 +315,36 @@
     const items = payload.results || [];
     const answer = payload.answer_korean || "";
     const answerMeta = payload.answer_meta || {};
+    const retrieval = payload.retrieval || {};
+    const stepLogs = retrieval.step_logs || [];
     const metaText = (answerMeta.mode ? (" (" + answerMeta.mode + (answerMeta.model ? (", " + answerMeta.model) : "") + ")") : "");
+    const escapeHtml = function (s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    };
+
+    const logsHtml = stepLogs.length
+      ? stepLogs.map(function (log) {
+          const dataText = JSON.stringify(log.data || {}, null, 2);
+          return "<div class='search-log-line'>" +
+            "<strong>Step " + escapeHtml(log.step) + ". " + escapeHtml(log.title) + "</strong><br/>" +
+            escapeHtml(log.detail) +
+            "<div class='search-log-data'>" + escapeHtml(dataText) + "</div>" +
+            "</div>";
+        }).join("")
+      : "<div class='muted'>표시할 retrieval 로그가 없습니다.</div>";
+
+    const retrievalSummaryHtml =
+      "<div><span class='pill'>intent: " + escapeHtml(retrieval.intent || "-") + "</span>" +
+      "<span class='pill'>language: " + escapeHtml(retrieval.language || "-") + "</span>" +
+      "<span class='pill'>rrf_candidates: " + escapeHtml(retrieval.rrf_candidates || 0) + "</span></div>" +
+      "<div class='muted' style='margin-top:6px;'>planned_queries: " +
+      escapeHtml((retrieval.planned_queries || []).join(" | ")) + "</div>";
+
     if (!items.length) {
-      searchResult.innerHTML = "<p><strong>답변:</strong> " + answer + metaText + "</p><p class='muted'>결과가 없습니다.</p>";
+      searchResult.innerHTML =
+        "<div class='search-block'><strong>검색 처리 로그</strong>" +
+        retrievalSummaryHtml + logsHtml + "</div>" +
+        "<div class='search-block'><p><strong>답변:</strong> " + escapeHtml(answer) + escapeHtml(metaText) + "</p><p class='muted'>결과가 없습니다.</p></div>";
       return;
     }
     const rows = items.map(function (r) {
@@ -333,12 +363,14 @@
     }).join("");
 
     searchResult.innerHTML =
-      "<p><strong>답변:</strong> " + answer + metaText + "</p>" +
-      "<div><strong>검색 결과</strong> " +
+      "<div class='search-block'><strong>검색 처리 로그</strong>" +
+      retrievalSummaryHtml + logsHtml + "</div>" +
+      "<div class='search-block'><p><strong>답변:</strong> " + escapeHtml(answer) + escapeHtml(metaText) + "</p></div>" +
+      "<div class='search-block'><div><strong>검색 결과</strong> " +
       "(count: <code>" + (payload.count || 0) + "</code>, top_k: <code>" + (payload.top_k || 0) + "</code>)</div>" +
       "<table><thead><tr>" +
       "<th>score</th><th>distance</th><th>tag</th><th>external_id</th><th>table</th><th>source_field</th><th>chunk_index</th><th>content</th>" +
-      "</tr></thead><tbody>" + rows + "</tbody></table>";
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
   }
 
   searchForm.addEventListener("submit", async function (e) {

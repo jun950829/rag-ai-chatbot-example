@@ -12,13 +12,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from embedding.pipeline import (  # noqa: E402
     DEFAULT_EMBEDDING_MODEL_ID,
-    EVIDENCE_TABLE_ENG,
-    EVIDENCE_TABLE_KOR,
-    PROFILE_TABLE_ENG,
-    PROFILE_TABLE_KOR,
     _build_embeddings,
     _fetch_new_company_rows,
     _resolve_device,
+    _table_set_for_model,
     _upsert_embeddings,
 )
 
@@ -65,10 +62,16 @@ def main() -> None:
         overlap=args.evidence_overlap,
         progress=None,
     )
-    counts = _upsert_embeddings(results, progress=None)
+    counts = _upsert_embeddings(results, model_id=args.model, progress=None)
+    table_set = _table_set_for_model(args.model)
 
     print("Upserted rows:")
-    for key in (PROFILE_TABLE_KOR, PROFILE_TABLE_ENG, EVIDENCE_TABLE_KOR, EVIDENCE_TABLE_ENG):
+    for key in (
+        table_set.profile_kor,
+        table_set.profile_eng,
+        table_set.evidence_kor,
+        table_set.evidence_eng,
+    ):
         print(f"  {key}: {counts.get(key, 0)}")
     print(f"  total: {sum(counts.values())}")
 

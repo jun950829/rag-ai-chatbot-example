@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import threading
@@ -26,12 +27,12 @@ from embedding.pipeline import (
     _fetch_new_company_rows,
     _upsert_embeddings,
     build_korean_search_answer,
-    embed_query_text,
-    search_embedding_tables,
 )
+from embedding.retrieval import RetrievalConfig, execute_retrieval_pipeline
 
 templates = Jinja2Templates(directory=str(_BASE / "templates"))
 app = FastAPI(title="Local Embedding Tool", version="0.1.0")
+logger = logging.getLogger(__name__)
 
 JOB_LOCK = threading.Lock()
 JOB_STORE: dict[str, dict[str, Any]] = {}
@@ -275,22 +276,45 @@ async def search_embeddings(
         raise HTTPException(status_code=400, detail="answer_mode must be one of: template, ollama")
 
     try:
-        qvec = embed_query_text(query, model_id=model_id, device=device or None)
-        results = search_embedding_tables(
-            query_embedding=qvec,
-            model_id=model_id,
-            top_k=top_k,
-            lang=lang,
-            chunk_type=chunk_type,
+        retrieval_payload = execute_retrieval_pipeline(
+            query,
+            config=RetrievalConfig(
+                model_id=model_id,
+                device=device or None,
+                top_k_per_query=max(6, top_k),
+                final_top_k=max(1, top_k),
+                score_cutoff=0.22,
+                evidence_ratio=0.6,
+                min_queries=3,
+                max_queries=5,
+                rrf_k=60,
+                context_limit=6,
+            ),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"임베딩 모델 로드 실패: {e}") from e
 
-    answer_korean = build_korean_search_answer(query, results)
-    answer_meta: dict[str, Any] = {"mode": "template"}
-    if answer_mode == "ollama":
+    results = retrieval_payload["final_results"]
+    response_mode = retrieval_payload.get("response_mode", "retrieval")
+    logger.info(
+        "[retrieval] done mode=%s intent=%s language=%s queries=%d results=%d",
+        response_mode,
+        retrieval_payload["intent"],
+        retrieval_payload["language"],
+        len(retrieval_payload["planned_queries"]),
+        len(results),
+    )
+
+    if response_mode == "intent_heuristic":
+        answer_korean = retrieval_payload.get("heuristic_answer") or "요청 의도에 맞춘 안내 응답입니다."
+        answer_meta: dict[str, Any] = {"mode": "intent_heuristic"}
+    else:
+        answer_korean = build_korean_search_answer(query, results)
+        answer_meta = {"mode": "template"}
+
+    if response_mode == "retrieval" and answer_mode == "ollama":
         try:
             answer_korean = _generate_korean_answer_with_ollama(
                 query=query,
@@ -313,6 +337,15 @@ async def search_embeddings(
             "lang": lang,
             "chunk_type": chunk_type,
             "count": len(results),
+            "retrieval": {
+                "intent": retrieval_payload["intent"],
+                "language": retrieval_payload["language"],
+                "planned_queries": retrieval_payload["planned_queries"],
+                "llm_context": retrieval_payload["llm_context"],
+                "rrf_candidates": len(retrieval_payload["fused_results"]),
+                "step_logs": retrieval_payload.get("step_logs", []),
+                "response_mode": response_mode,
+            },
             "answer_korean": answer_korean,
             "answer_meta": answer_meta,
             "results": results,
