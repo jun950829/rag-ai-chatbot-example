@@ -5,6 +5,11 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      EMBEDDING_SERVICE_URL: ${EMBEDDING_SERVICE_URL:-http://host.docker.internal:8765}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/rag_template}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${APP_PORT:-8000}:8000"
     depends_on:

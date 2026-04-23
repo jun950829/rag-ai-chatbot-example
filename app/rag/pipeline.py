@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sys
 import uuid
+from urllib import request as urllib_request
+from urllib.parse import urlencode
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -14,8 +17,9 @@ from typing import Any, Callable, Optional
 import sqlalchemy as sa
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent
+# app/rag/pipeline.py -> repo root is two levels above this file
+RAG_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = RAG_DIR.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -72,7 +76,7 @@ class _EmbeddingLocalSettings(BaseSettings):
     database_url: Optional[str] = None
 
     model_config = SettingsConfigDict(
-        env_file=(str(PROJECT_ROOT / ".env"), str(BASE_DIR / ".env")),
+        env_file=(str(PROJECT_ROOT / ".env"), str(RAG_DIR / ".env")),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -82,11 +86,16 @@ class _EmbeddingLocalSettings(BaseSettings):
 def _resolve_database_url() -> str:
     settings = _EmbeddingLocalSettings()
     url = settings.embedding_database_url or settings.database_url
+    in_container = (PROJECT_ROOT / ".dockerenv").exists() or Path("/.dockerenv").exists()
     if not url:
+        if in_container:
+            return "postgresql+psycopg://postgres:postgres@db:5432/rag_template"
         return "postgresql+psycopg://postgres:postgres@localhost:5432/rag_template"
 
-    if "@db:" in url:
+    if "@db:" in url and not in_container:
         return url.replace("@db:", "@localhost:")
+    if "@localhost:" in url and in_container:
+        return url.replace("@localhost:", "@db:")
     return url
 
 
@@ -170,7 +179,7 @@ def _get_sentence_transformer(model_id: str, device: str | None):
 
 @lru_cache(maxsize=4)
 def _get_qwen3_vl_embedder(model_id: str, device: str | None):
-    from embedding.qwen3_vl_embedding_upstream import Qwen3VLEmbedder
+    from app.rag.qwen3_vl_embedding_upstream import Qwen3VLEmbedder
 
     return Qwen3VLEmbedder(model_name_or_path=model_id, device=device, trust_remote_code=True)
 
@@ -524,10 +533,52 @@ def _embed_texts(
     return _encode(embedder, texts, batch_size=batch_size, model_id=model_id)
 
 
-def embed_query_text(query: str, *, model_id: str, device: str | None) -> list[float]:
+def _embed_query_via_http(
+    base_url: str,
+    query: str,
+    *,
+    model_id: str,
+    device: str | None,
+    timeout_sec: int = 120,
+) -> list[float]:
     q = (query or "").strip()
     if not q:
         raise ValueError("query is empty")
+    endpoint = base_url.rstrip("/") + "/v1/embed/query"
+    body = urlencode(
+        {
+            "query": q,
+            "model_id": model_id,
+            "device": (device or "").strip(),
+        }
+    ).encode("utf-8")
+    req = urllib_request.Request(
+        endpoint,
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    vec = payload.get("embedding")
+    if not isinstance(vec, list) or not vec:
+        raise RuntimeError("remote embed returned empty embedding")
+    return [float(x) for x in vec]
+
+
+def embed_query_text(
+    query: str,
+    *,
+    model_id: str,
+    device: str | None,
+    remote_base_url: str | None = None,
+) -> list[float]:
+    q = (query or "").strip()
+    if not q:
+        raise ValueError("query is empty")
+    base = (remote_base_url or "").strip() or os.environ.get("EMBEDDING_SERVICE_URL", "").strip()
+    if base:
+        return _embed_query_via_http(base, q, model_id=model_id, device=device)
     vectors = _embed_texts([q], model_id=model_id, device=device, batch_size=1)
     if not vectors:
         raise RuntimeError("failed to embed query")

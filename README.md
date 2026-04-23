@@ -172,20 +172,22 @@ pip install -r requirements-api.txt
 uvicorn app.main:app --reload
 ```
 
-Embedding local app install:
+Local embedding worker (GPU; separate from Docker API):
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn embedding.main:app --reload --port 8010
+export PYTHONPATH="$(pwd)"
+pip install -r requirements-api.txt -r embedding/requirements.txt
+uvicorn embedding.main:app --reload --host 0.0.0.0 --port 8765
 ```
+
+RAG pipeline and embedding UI live under `app/rag` and `/tools/embedding` on the API server. See `embedding/README.md` and `app/rag/README.md`.
 
 Useful URLs:
 
 - app: `http://localhost:8000`
 - docs: `http://localhost:8000/docs`
 - health: `http://localhost:8000/api/v1/health`
+- embedding tool UI: `http://localhost:8000/tools/embedding`
 
 ## What Good Looks Like
 

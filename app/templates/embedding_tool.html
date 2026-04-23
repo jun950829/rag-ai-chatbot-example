@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Local Embedding Tool</title>
+    <title>Embedding tool (API)</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
       h1 { margin-bottom: 8px; }
@@ -44,8 +44,17 @@
     </style>
   </head>
   <body>
+    {% if not embedding_service_configured %}
+    <p class="muted" style="border:1px solid #f0c36d;background:#fff8e6;padding:10px;border-radius:8px;">
+      <strong>EMBEDDING_SERVICE_URL</strong> 이 설정되지 않았습니다. 임베딩 적재 요청은 로컬 임베딩 API로 프록시되지 않습니다.
+      Docker에서는 예: <code>http://host.docker.internal:8765</code>
+    </p>
+    {% endif %}
     <h1>new_company 임베딩 + 검색</h1>
-    <p><code>new_company</code>에서 임베딩을 생성/적재하고, 같은 모델로 검색어를 임베딩해 4개 테이블에서 유사도를 조회합니다.</p>
+    <p>
+      임베딩 적재는 <strong>로컬 임베딩 서버</strong> API로 프록시되고, 검색·DB 조회·의도/응답 로직은 <strong>이 API 서버</strong>에서 실행됩니다.
+      로컬에서 임베딩 전용 서버 실행: <code>uvicorn embedding.embed_server:app --host 0.0.0.0 --port 8765</code>
+    </p>
 
     <div class="layout">
       <section class="col card">
@@ -115,19 +124,11 @@
           </div>
           <div class="row">
             <label for="search_device">Device</label>
-            <input id="search_device" type="text" name="device" value="mps" />
+            <input id="search_device" type="text" name="device" value="cpu" />
           </div>
           <div class="row">
             <label for="search_top_k">Top K</label>
             <input id="search_top_k" type="number" name="top_k" value="10" min="1" max="100" />
-          </div>
-          <div class="row">
-            <label for="search_lang">Language Filter</label>
-            <select id="search_lang" name="lang">
-              <option value="all">all</option>
-              <option value="kor">kor</option>
-              <option value="eng">eng</option>
-            </select>
           </div>
           <div class="row">
             <label for="search_chunk_type">Chunk Type</label>
@@ -140,17 +141,13 @@
           <div class="row">
             <label for="answer_mode">응답 생성 방식</label>
             <select id="answer_mode" name="answer_mode">
-              <option value="template">template (규칙기반, 빠름)</option>
-              <option value="ollama">ollama (로컬 무료 LLM)</option>
+              <option value="template">기본 시스템 (템플릿)</option>
+              <option value="openai">OpenAI (의도/뉘앙스 정제)</option>
             </select>
           </div>
           <div class="row">
-            <label for="llm_model">LLM Model (Ollama)</label>
-            <input id="llm_model" type="text" name="llm_model" value="qwen2.5:3b-instruct" />
-          </div>
-          <div class="row">
-            <label for="llm_base_url">Ollama Base URL</label>
-            <input id="llm_base_url" type="text" name="llm_base_url" value="http://localhost:11434" />
+            <label for="openai_model">OpenAI Model</label>
+            <input id="openai_model" type="text" name="openai_model" value="gpt-4o-mini" />
           </div>
           <button type="submit" id="search_btn">검색 실행</button>
         </form>
@@ -177,6 +174,8 @@
   const searchBtn = document.getElementById("search_btn");
   const searchError = document.getElementById("search_error");
   const searchResult = document.getElementById("search_result");
+  const answerModeEl = document.getElementById("answer_mode");
+  const openaiModelEl = document.getElementById("openai_model");
 
   function resetError() {
     errBox.textContent = "";
@@ -237,7 +236,7 @@
     }
 
     try {
-      const startRes = await fetch("/embed/job", { method: "POST", body: fd });
+      const startRes = await fetch("/tools/embedding/api/embed/job", { method: "POST", body: fd });
       const startText = await startRes.text();
       let startJson;
       try { startJson = JSON.parse(startText); } catch (_) { throw new Error(startRes.ok ? "서버 응답이 JSON이 아닙니다." : startText.slice(0, 400)); }
@@ -249,7 +248,7 @@
       if (!jobId) throw new Error("job_id가 없습니다.");
 
       async function pollOnce() {
-        const st = await fetch("/embed/job/" + encodeURIComponent(jobId) + "/status");
+        const st = await fetch("/tools/embedding/api/embed/job/" + encodeURIComponent(jobId) + "/status");
         const stText = await st.text();
         let j;
         try { j = JSON.parse(stText); } catch (_) { throw new Error("상태 응답 파싱 실패"); }
@@ -311,6 +310,11 @@
     searchError.textContent = "";
     searchError.classList.remove("visible");
   }
+  function syncAnswerModeUI() {
+    const useOpenAI = String(answerModeEl.value || "") === "openai";
+    openaiModelEl.disabled = !useOpenAI;
+    openaiModelEl.style.opacity = useOpenAI ? "1" : "0.6";
+  }
   function renderSearchResults(payload) {
     const items = payload.results || [];
     const answer = payload.answer_korean || "";
@@ -333,12 +337,32 @@
         }).join("")
       : "<div class='muted'>표시할 retrieval 로그가 없습니다.</div>";
 
+    const usage = retrieval.openai_usage_summary || {};
+    const yn = function (v) { return v ? "예" : "아니오"; };
+    const openaiUsageHtml =
+      "<div class='search-block' style='margin-top:8px;padding:8px;background:#f7f9fc;border-color:#d0d8e8;'>" +
+      "<strong>OpenAI 사용 요약</strong>" +
+      "<div style='margin-top:6px;'>" +
+      "<span class='pill'>의도분류 OpenAI: " + yn(usage.intent_classification_used_openai) + "</span>" +
+      "<span class='pill'>쿼리플래너 호출: " + yn(usage.query_planning_called_openai) + "</span>" +
+      "<span class='pill'>쿼리플래너 성공: " + yn(usage.query_planning_succeeded) + "</span>" +
+      "<span class='pill'>벡터검색: " + yn(usage.vector_search_ran) + "</span>" +
+      "<span class='pill'>답변생성 OpenAI: " + yn(usage.answer_generation_used_openai) + "</span>" +
+      "</div>" +
+      "<div class='muted' style='margin-top:6px;line-height:1.45;'>" +
+      escapeHtml(usage.notes_ko || "") +
+      (usage.answer_generation_mode
+        ? (" · 답변모드: <code>" + escapeHtml(usage.answer_generation_mode) + "</code>")
+        : "") +
+      "</div></div>";
+
     const retrievalSummaryHtml =
       "<div><span class='pill'>intent: " + escapeHtml(retrieval.intent || "-") + "</span>" +
       "<span class='pill'>language: " + escapeHtml(retrieval.language || "-") + "</span>" +
       "<span class='pill'>rrf_candidates: " + escapeHtml(retrieval.rrf_candidates || 0) + "</span></div>" +
       "<div class='muted' style='margin-top:6px;'>planned_queries: " +
-      escapeHtml((retrieval.planned_queries || []).join(" | ")) + "</div>";
+      escapeHtml((retrieval.planned_queries || []).join(" | ")) + "</div>" +
+      openaiUsageHtml;
 
     if (!items.length) {
       searchResult.innerHTML =
@@ -385,7 +409,7 @@
     }
     searchBtn.disabled = true;
     try {
-      const res = await fetch("/search", { method: "POST", body: fd });
+      const res = await fetch("/tools/embedding/api/search", { method: "POST", body: fd });
       const text = await res.text();
       let j;
       try { j = JSON.parse(text); } catch (_) { throw new Error(res.ok ? "서버 응답이 JSON이 아닙니다." : text.slice(0, 500)); }
@@ -400,6 +424,8 @@
       searchBtn.disabled = false;
     }
   });
+  answerModeEl.addEventListener("change", syncAnswerModeUI);
+  syncAnswerModeUI();
 })();
     </script>
   </body>

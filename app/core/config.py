@@ -18,12 +18,16 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
 
     openai_api_key: str = ""
+    openai_base_url: str = ""
     openai_model: str = "gpt-4.1-mini"
     embed_provider: str = "openai"
     embed_api_url: str = ""
 
     default_embed_dim: int = 1536
     default_retrieval_top_k: int = 5
+
+    # Base URL of the local embedding inference server (host machine), e.g. http://host.docker.internal:8765
+    embedding_service_url: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
