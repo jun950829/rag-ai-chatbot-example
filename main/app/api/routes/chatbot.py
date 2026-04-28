@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from datetime import datetime, timezone
 import uuid
 from typing import AsyncIterator
 
@@ -29,12 +30,16 @@ async def _push_trace(
     stage: str,
     status: str,
     detail: str,
+    data: dict | None = None,
 ) -> None:
     payload = {
+        "time": datetime.now(timezone.utc).isoformat(),
         "stage": stage,
         "status": status,
         "detail": detail,
     }
+    if data:
+        payload["data"] = data
     await redis.rpush(trace_key, json.dumps(payload, ensure_ascii=False))
     await redis.expire(trace_key, 3600)
 
@@ -167,7 +172,7 @@ async def chat_trace(request_id: str) -> JSONResponse:
     trace_key = f"{settings.llm_trace_prefix}{request_id}"
     try:
         raw_items = await redis.lrange(trace_key, 0, -1)
-        items: list[dict[str, str]] = []
+        items: list[dict[str, object]] = []
         for raw in raw_items:
             try:
                 payload = json.loads(raw)
@@ -175,9 +180,11 @@ async def chat_trace(request_id: str) -> JSONResponse:
                 continue
             items.append(
                 {
+                    "time": payload.get("time", ""),
                     "stage": str(payload.get("stage", "")),
                     "status": str(payload.get("status", "")),
                     "detail": str(payload.get("detail", "")),
+                    "data": payload.get("data", None),
                 }
             )
         return JSONResponse({"request_id": request_id, "trace": items})

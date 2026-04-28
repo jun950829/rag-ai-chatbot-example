@@ -1,6 +1,6 @@
-"""Drop new_company + legacy embedding tables; add KOBA exhibitor/item + embeddings.
+"""Drop new_company + legacy embedding tables; add KPRINT exhibitor/item + embeddings.
 
-Revision ID: 20260428_koba_replace_new_company
+Revision ID: 20260428_kprint_init
 Revises: 20260415_add_bge_m3_tables
 """
 from __future__ import annotations
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260428_koba_replace_new_company"
+revision = "20260428_kprint_init"
 down_revision = "20260415_add_bge_m3_tables"
 branch_labels = None
 depends_on = None
@@ -75,7 +75,7 @@ def upgrade() -> None:
     _drop_legacy()
 
     op.create_table(
-        "koba_exhibitor",
+        "kprint_exhibitor",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("external_id", sa.String(length=255), nullable=True),
         sa.Column("company_name_kor", sa.Text(), nullable=True),
@@ -117,13 +117,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("external_id"),
     )
-    op.create_index(op.f("ix_koba_exhibitor_booth_number"), "koba_exhibitor", ["booth_number"], unique=False)
-    op.create_index(op.f("ix_koba_exhibitor_country_code"), "koba_exhibitor", ["country_code"], unique=False)
-    op.create_index(op.f("ix_koba_exhibitor_exhibit_year"), "koba_exhibitor", ["exhibit_year"], unique=False)
-    op.create_index(op.f("ix_koba_exhibitor_external_id"), "koba_exhibitor", ["external_id"], unique=False)
+    op.create_index(op.f("ix_kprint_exhibitor_booth_number"), "kprint_exhibitor", ["booth_number"], unique=False)
+    op.create_index(op.f("ix_kprint_exhibitor_country_code"), "kprint_exhibitor", ["country_code"], unique=False)
+    op.create_index(op.f("ix_kprint_exhibitor_exhibit_year"), "kprint_exhibitor", ["exhibit_year"], unique=False)
+    op.create_index(op.f("ix_kprint_exhibitor_external_id"), "kprint_exhibitor", ["external_id"], unique=False)
 
     op.create_table(
-        "koba_exhibit_item",
+        "kprint_exhibit_item",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("external_id", sa.String(length=512), nullable=True),
         sa.Column("product_id", sa.String(length=64), nullable=True),
@@ -164,40 +164,40 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("external_id"),
     )
-    op.create_index(op.f("ix_koba_exhibit_item_product_id"), "koba_exhibit_item", ["product_id"], unique=False)
-    op.create_index(op.f("ix_koba_exhibit_item_exhibitor_sn"), "koba_exhibit_item", ["exhibitor_sn"], unique=False)
-    op.create_index(op.f("ix_koba_exhibit_item_external_id"), "koba_exhibit_item", ["external_id"], unique=False)
+    op.create_index(op.f("ix_kprint_exhibit_item_product_id"), "kprint_exhibit_item", ["product_id"], unique=False)
+    op.create_index(op.f("ix_kprint_exhibit_item_exhibitor_sn"), "kprint_exhibit_item", ["exhibitor_sn"], unique=False)
+    op.create_index(op.f("ix_kprint_exhibit_item_external_id"), "kprint_exhibit_item", ["external_id"], unique=False)
 
     exhibitor_tables = (
-        "koba_exhibitor_profile_embedding_qwen3_0_6b_kor",
-        "koba_exhibitor_profile_embedding_qwen3_0_6b_eng",
-        "koba_exhibitor_evidence_embedding_qwen3_0_6b_kor",
-        "koba_exhibitor_evidence_embedding_qwen3_0_6b_eng",
+        "kprint_exhibitor_profile_embedding_qwen3_0_6b_kor",
+        "kprint_exhibitor_profile_embedding_qwen3_0_6b_eng",
+        "kprint_exhibitor_evidence_embedding_qwen3_0_6b_kor",
+        "kprint_exhibitor_evidence_embedding_qwen3_0_6b_eng",
     )
     item_tables = (
-        "koba_exhibit_item_profile_embedding_qwen3_0_6b_kor",
-        "koba_exhibit_item_profile_embedding_qwen3_0_6b_eng",
-        "koba_exhibit_item_evidence_embedding_qwen3_0_6b_kor",
-        "koba_exhibit_item_evidence_embedding_qwen3_0_6b_eng",
+        "kprint_exhibit_item_profile_embedding_qwen3_0_6b_kor",
+        "kprint_exhibit_item_profile_embedding_qwen3_0_6b_eng",
+        "kprint_exhibit_item_evidence_embedding_qwen3_0_6b_kor",
+        "kprint_exhibit_item_evidence_embedding_qwen3_0_6b_eng",
     )
     for t in exhibitor_tables:
-        _create_embedding_table(t, "koba_exhibitor")
+        _create_embedding_table(t, "kprint_exhibitor")
     for t in item_tables:
-        _create_embedding_table(t, "koba_exhibit_item")
+        _create_embedding_table(t, "kprint_exhibit_item")
 
 
 def downgrade() -> None:
     item_tables = (
-        "koba_exhibit_item_evidence_embedding_qwen3_0_6b_eng",
-        "koba_exhibit_item_evidence_embedding_qwen3_0_6b_kor",
-        "koba_exhibit_item_profile_embedding_qwen3_0_6b_eng",
-        "koba_exhibit_item_profile_embedding_qwen3_0_6b_kor",
+        "kprint_exhibit_item_evidence_embedding_qwen3_0_6b_eng",
+        "kprint_exhibit_item_evidence_embedding_qwen3_0_6b_kor",
+        "kprint_exhibit_item_profile_embedding_qwen3_0_6b_eng",
+        "kprint_exhibit_item_profile_embedding_qwen3_0_6b_kor",
     )
     exhibitor_tables = (
-        "koba_exhibitor_evidence_embedding_qwen3_0_6b_eng",
-        "koba_exhibitor_evidence_embedding_qwen3_0_6b_kor",
-        "koba_exhibitor_profile_embedding_qwen3_0_6b_eng",
-        "koba_exhibitor_profile_embedding_qwen3_0_6b_kor",
+        "kprint_exhibitor_evidence_embedding_qwen3_0_6b_eng",
+        "kprint_exhibitor_evidence_embedding_qwen3_0_6b_kor",
+        "kprint_exhibitor_profile_embedding_qwen3_0_6b_eng",
+        "kprint_exhibitor_profile_embedding_qwen3_0_6b_kor",
     )
     for name in item_tables:
         op.execute(sa.text(f'DROP INDEX IF EXISTS "{_emb_ix(name, "ct")}"'))
@@ -210,15 +210,15 @@ def downgrade() -> None:
         op.execute(sa.text(f'DROP INDEX IF EXISTS "{_emb_ix(name, "eid")}"'))
         op.drop_table(name)
 
-    op.drop_index(op.f("ix_koba_exhibit_item_external_id"), table_name="koba_exhibit_item")
-    op.drop_index(op.f("ix_koba_exhibit_item_exhibitor_sn"), table_name="koba_exhibit_item")
-    op.drop_index(op.f("ix_koba_exhibit_item_product_id"), table_name="koba_exhibit_item")
-    op.drop_table("koba_exhibit_item")
+    op.drop_index(op.f("ix_kprint_exhibit_item_external_id"), table_name="kprint_exhibit_item")
+    op.drop_index(op.f("ix_kprint_exhibit_item_exhibitor_sn"), table_name="kprint_exhibit_item")
+    op.drop_index(op.f("ix_kprint_exhibit_item_product_id"), table_name="kprint_exhibit_item")
+    op.drop_table("kprint_exhibit_item")
 
-    op.drop_index(op.f("ix_koba_exhibitor_external_id"), table_name="koba_exhibitor")
-    op.drop_index(op.f("ix_koba_exhibitor_exhibit_year"), table_name="koba_exhibitor")
-    op.drop_index(op.f("ix_koba_exhibitor_country_code"), table_name="koba_exhibitor")
-    op.drop_index(op.f("ix_koba_exhibitor_booth_number"), table_name="koba_exhibitor")
-    op.drop_table("koba_exhibitor")
+    op.drop_index(op.f("ix_kprint_exhibitor_external_id"), table_name="kprint_exhibitor")
+    op.drop_index(op.f("ix_kprint_exhibitor_exhibit_year"), table_name="kprint_exhibitor")
+    op.drop_index(op.f("ix_kprint_exhibitor_country_code"), table_name="kprint_exhibitor")
+    op.drop_index(op.f("ix_kprint_exhibitor_booth_number"), table_name="kprint_exhibitor")
+    op.drop_table("kprint_exhibitor")
 
     # Restore previous revision state: re-run 20260410/20260414/20260415 manually if needed.

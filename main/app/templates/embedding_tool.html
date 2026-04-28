@@ -50,7 +50,7 @@
       Docker에서는 예: <code>http://host.docker.internal:8765</code>
     </p>
     {% endif %}
-    <h1>KOBA 참가업체·전시품 임베딩 + 검색</h1>
+    <h1>KPRINT 참가업체·전시품 임베딩 + 검색</h1>
     <p>
       임베딩 적재는 <strong>로컬 임베딩 서버</strong> API로 프록시되고, 검색·DB 조회·의도/응답 로직은 <strong>이 API 서버</strong>에서 실행됩니다.
       로컬에서 임베딩 전용 서버 실행: <code>uvicorn embedding.embed_server:app --host 0.0.0.0 --port 8765</code>
@@ -87,10 +87,10 @@
             <input id="evidence_overlap" type="number" name="evidence_overlap" value="150" min="0" />
           </div>
           <div class="row">
-            <label for="koba_target">임베딩 소스</label>
-            <select id="koba_target" name="koba_target">
-              <option value="exhibitors">koba_exhibitor (참가업체)</option>
-              <option value="exhibit_items">koba_exhibit_item (전시품)</option>
+            <label for="target">임베딩 소스</label>
+            <select id="target" name="target">
+              <option value="kprint_exhibitors">kprint_exhibitor (참가업체)</option>
+              <option value="kprint_exhibit_items">kprint_exhibit_item (전시품)</option>
             </select>
           </div>
           <div class="row">
@@ -115,7 +115,7 @@
 
       <section class="col card">
         <h2>벡터 검색</h2>
-        <p class="muted">검색어를 임베딩 후 KOBA 업체·전시품 임베딩 테이블(프로필/근거 × kor/eng)에서 유사도 순으로 반환합니다.</p>
+        <p class="muted">검색어를 임베딩 후 KPRINT 업체·전시품 임베딩 테이블(프로필/근거 × kor/eng)에서 유사도 순으로 반환합니다.</p>
         <form id="search-form">
           <div class="row">
             <label for="search_query">검색어</label>
@@ -196,8 +196,8 @@
   }
   function showResult(payload) {
     const counts = payload.upsert_counts || {};
-    const rowsN = payload.rows_embedded || payload.rows_in_new_company || "-";
-    const ent = payload.koba_entity || "-";
+    const rowsN = payload.rows_embedded || "-";
+    const ent = payload.entity || payload.koba_entity || "-";
     const total = payload.total_upserted || 0;
     resultBox.innerHTML =
       "<strong>적재 결과</strong>" +

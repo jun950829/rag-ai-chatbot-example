@@ -39,7 +39,7 @@ async def _generate_korean_answer_with_openai(
             f"external_id={r.get('external_id')}, source_field={r.get('source_field')}, content={content}"
         )
     context_text = "\n".join(lines)
-    user_tone = "질문 의도가 명확한 검색 요청" if intent == "new_company_query" else f"질문 의도={intent}"
+    user_tone = "질문 의도가 명확한 검색 요청" if intent in {"company", "product"} else f"질문 의도={intent}"
     language_rule = "한국어로 답변" if language == "ko" else "기본은 한국어, 필요 시 핵심 영문 키워드 병기"
     resp = await client.chat.completions.create(
         model=model,
@@ -113,6 +113,7 @@ async def run_vector_search(
     openai_base_url: str,
     embedding_remote_base_url: str | None,
     memory: ConversationMemory | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     if chunk_type not in {"all", "profile", "evidence"}:
         raise ValueError("chunk_type must be one of: all, profile, evidence")
@@ -126,6 +127,35 @@ async def run_vector_search(
         if (openai_base_url or "").strip():
             client_kwargs["base_url"] = (openai_base_url or "").strip()
         openai_client = AsyncOpenAI(**client_kwargs)
+
+    # (프로덕션) 세션 기반 DB 컨텍스트를 쓰는 경우: DB → memory hydrate
+    db_memory = memory
+    has_history = False
+    if session_id:
+        from app.db.session import AsyncSessionLocal
+        from app.services import ConversationService, MessageService, is_followup_v2
+
+        async with AsyncSessionLocal() as db:
+            conv = ConversationService(db)
+            msg_svc = MessageService(db)
+            sid = await conv.get_or_create_session(session_id)
+            db_memory = await conv.hydrate_memory(sid, limit=5)
+            has_history = len(db_memory.get_recent()) > 0
+
+            # follow-up 판단은 최근 메시지 기반으로 별도 계산(LLM 없이)
+            hist_texts = [m.get("message", "") for m in db_memory.get_recent()][-5:]
+            is_fu, fu_conf, fu_meta = is_followup_v2(current=query, history=hist_texts)
+
+            # 사용자가 입력한 메시지는 retrieval 전에 저장
+            # (intent는 retrieval 결과가 나오기 전이므로 일단 pipeline intent를 사용)
+            # → 여기서는 임시로 general로 넣고, 아래에서 업데이트하지는 않는다.
+            await msg_svc.save_user_message(
+                session_id=sid,
+                content=query,
+                intent="followup" if is_fu else "general",
+                is_followup=is_fu,
+                confidence=fu_conf,
+            )
 
     retrieval_payload = await execute_retrieval_pipeline(
         query,
@@ -144,7 +174,8 @@ async def run_vector_search(
         openai_client=openai_client,
         intent_model=openai_model,
         embedding_remote_base_url=embedding_remote_base_url,
-        memory=memory or _DEFAULT_MEMORY,
+        has_history=has_history,
+        memory=db_memory or _DEFAULT_MEMORY,
     )
 
     results = retrieval_payload["final_results"]
@@ -239,6 +270,17 @@ async def run_vector_search(
         _DEFAULT_MEMORY.add("assistant", answer_korean)
     else:
         memory.add("assistant", answer_korean)
+
+    # (프로덕션) 세션 기반일 때 assistant 메시지 저장
+    if session_id:
+        from app.db.session import AsyncSessionLocal
+        from app.services import ConversationService, MessageService
+
+        async with AsyncSessionLocal() as db:
+            conv = ConversationService(db)
+            msg_svc = MessageService(db)
+            sid = await conv.get_or_create_session(session_id)
+            await msg_svc.save_assistant_message(session_id=sid, content=answer_korean)
 
     return {
         "query": query,

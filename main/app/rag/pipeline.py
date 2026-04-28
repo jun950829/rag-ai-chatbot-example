@@ -36,46 +36,46 @@ class ModelTableSet:
 
 
 @dataclass(frozen=True)
-class KobaModelTableBundle:
+class KprintModelTableBundle:
     exhibitor: ModelTableSet
     exhibit_item: ModelTableSet
 
 
-KOBA_EXHIBITOR_QWEN = ModelTableSet(
-    profile_kor="koba_exhibitor_profile_embedding_qwen3_0_6b_kor",
-    profile_eng="koba_exhibitor_profile_embedding_qwen3_0_6b_eng",
-    evidence_kor="koba_exhibitor_evidence_embedding_qwen3_0_6b_kor",
-    evidence_eng="koba_exhibitor_evidence_embedding_qwen3_0_6b_eng",
+KPRINT_EXHIBITOR_QWEN = ModelTableSet(
+    profile_kor="kprint_exhibitor_profile_embedding_qwen3_0_6b_kor",
+    profile_eng="kprint_exhibitor_profile_embedding_qwen3_0_6b_eng",
+    evidence_kor="kprint_exhibitor_evidence_embedding_qwen3_0_6b_kor",
+    evidence_eng="kprint_exhibitor_evidence_embedding_qwen3_0_6b_eng",
 )
-KOBA_EXHIBIT_ITEM_QWEN = ModelTableSet(
-    profile_kor="koba_exhibit_item_profile_embedding_qwen3_0_6b_kor",
-    profile_eng="koba_exhibit_item_profile_embedding_qwen3_0_6b_eng",
-    evidence_kor="koba_exhibit_item_evidence_embedding_qwen3_0_6b_kor",
-    evidence_eng="koba_exhibit_item_evidence_embedding_qwen3_0_6b_eng",
+KPRINT_EXHIBIT_ITEM_QWEN = ModelTableSet(
+    profile_kor="kprint_exhibit_item_profile_embedding_qwen3_0_6b_kor",
+    profile_eng="kprint_exhibit_item_profile_embedding_qwen3_0_6b_eng",
+    evidence_kor="kprint_exhibit_item_evidence_embedding_qwen3_0_6b_kor",
+    evidence_eng="kprint_exhibit_item_evidence_embedding_qwen3_0_6b_eng",
 )
 
-# Backward-compatible aliases (KOBA exhibitor + Qwen3 table names).
-QWEN_TABLE_SET = KOBA_EXHIBITOR_QWEN
-PROFILE_TABLE_KOR = KOBA_EXHIBITOR_QWEN.profile_kor
-PROFILE_TABLE_ENG = KOBA_EXHIBITOR_QWEN.profile_eng
-EVIDENCE_TABLE_KOR = KOBA_EXHIBITOR_QWEN.evidence_kor
-EVIDENCE_TABLE_ENG = KOBA_EXHIBITOR_QWEN.evidence_eng
+# Backward-compatible aliases.
+QWEN_TABLE_SET = KPRINT_EXHIBITOR_QWEN
+PROFILE_TABLE_KOR = KPRINT_EXHIBITOR_QWEN.profile_kor
+PROFILE_TABLE_ENG = KPRINT_EXHIBITOR_QWEN.profile_eng
+EVIDENCE_TABLE_KOR = KPRINT_EXHIBITOR_QWEN.evidence_kor
+EVIDENCE_TABLE_ENG = KPRINT_EXHIBITOR_QWEN.evidence_eng
 
 
-def _koba_bundle_for_model(_model_id: str = "") -> KobaModelTableBundle:
-    """KOBA 임베딩 테이블은 Qwen3 0.6B 전용(pgvector 테이블명 고정)."""
-    return KobaModelTableBundle(KOBA_EXHIBITOR_QWEN, KOBA_EXHIBIT_ITEM_QWEN)
+def _kprint_bundle_for_model(_model_id: str = "") -> KprintModelTableBundle:
+    """KPRINT 임베딩 테이블은 Qwen3 0.6B 전용(pgvector 테이블명 고정)."""
+    return KprintModelTableBundle(KPRINT_EXHIBITOR_QWEN, KPRINT_EXHIBIT_ITEM_QWEN)
 
 
-def _koba_table_set_for_entity(
+def _kprint_table_set_for_entity(
     entity: Literal["exhibitor", "exhibit_item"], model_id: str
 ) -> ModelTableSet:
-    bundle = _koba_bundle_for_model(model_id)
+    bundle = _kprint_bundle_for_model(model_id)
     return bundle.exhibit_item if entity == "exhibit_item" else bundle.exhibitor
 
 
-def _koba_parent_sql_table(entity: Literal["exhibitor", "exhibit_item"]) -> str:
-    return "koba_exhibit_item" if entity == "exhibit_item" else "koba_exhibitor"
+def _kprint_parent_sql_table(entity: Literal["exhibitor", "exhibit_item"]) -> str:
+    return "kprint_exhibit_item" if entity == "exhibit_item" else "kprint_exhibitor"
 
 _UPSERT_ROWS_PER_EXECUTE = 1000
 
@@ -124,7 +124,7 @@ def _resolve_database_url() -> str:
 
 engine = sa.create_engine(_resolve_database_url(), future=True, pool_pre_ping=True)
 
-KOBA_EXHIBITOR_PROFILE_KOR: tuple[str, ...] = (
+KPRINT_EXHIBITOR_PROFILE_KOR: tuple[str, ...] = (
     "company_name_kor",
     "exhibit_year",
     "exhibition_category_label",
@@ -135,7 +135,7 @@ KOBA_EXHIBITOR_PROFILE_KOR: tuple[str, ...] = (
     "exhibit_hall_label_kor",
     "exhibit_hall_code",
 )
-KOBA_EXHIBITOR_PROFILE_ENG: tuple[str, ...] = (
+KPRINT_EXHIBITOR_PROFILE_ENG: tuple[str, ...] = (
     "company_name_eng",
     "exhibit_year",
     "exhibition_category_label",
@@ -146,9 +146,9 @@ KOBA_EXHIBITOR_PROFILE_ENG: tuple[str, ...] = (
     "exhibit_hall_label_eng",
     "exhibit_hall_code",
 )
-KOBA_EXHIBITOR_PROFILE_ALL = set(KOBA_EXHIBITOR_PROFILE_KOR) | set(KOBA_EXHIBITOR_PROFILE_ENG)
+KPRINT_EXHIBITOR_PROFILE_ALL = set(KPRINT_EXHIBITOR_PROFILE_KOR) | set(KPRINT_EXHIBITOR_PROFILE_ENG)
 
-KOBA_EXHIBIT_ITEM_PROFILE_KOR: tuple[str, ...] = (
+KPRINT_EXHIBIT_ITEM_PROFILE_KOR: tuple[str, ...] = (
     "item_main_category_label_kor",
     "item_main_category",
     "item_sub_category",
@@ -156,7 +156,7 @@ KOBA_EXHIBIT_ITEM_PROFILE_KOR: tuple[str, ...] = (
     "product_name_kor",
     "search_keywords_kor",
 )
-KOBA_EXHIBIT_ITEM_PROFILE_ENG: tuple[str, ...] = (
+KPRINT_EXHIBIT_ITEM_PROFILE_ENG: tuple[str, ...] = (
     "item_main_category_label_eng",
     "item_main_category",
     "item_sub_category",
@@ -164,7 +164,7 @@ KOBA_EXHIBIT_ITEM_PROFILE_ENG: tuple[str, ...] = (
     "product_name_eng",
     "search_keywords_eng",
 )
-KOBA_EXHIBIT_ITEM_PROFILE_ALL = set(KOBA_EXHIBIT_ITEM_PROFILE_KOR) | set(KOBA_EXHIBIT_ITEM_PROFILE_ENG)
+KPRINT_EXHIBIT_ITEM_PROFILE_ALL = set(KPRINT_EXHIBIT_ITEM_PROFILE_KOR) | set(KPRINT_EXHIBIT_ITEM_PROFILE_ENG)
 
 
 def _safe_str(value: Any) -> str:
@@ -280,9 +280,9 @@ def _profile_text_for_entity(
     row: dict[str, str], *, lang: str, entity: Literal["exhibitor", "exhibit_item"]
 ) -> str:
     if entity == "exhibit_item":
-        cols = KOBA_EXHIBIT_ITEM_PROFILE_KOR if lang == "kor" else KOBA_EXHIBIT_ITEM_PROFILE_ENG
+        cols = KPRINT_EXHIBIT_ITEM_PROFILE_KOR if lang == "kor" else KPRINT_EXHIBIT_ITEM_PROFILE_ENG
     else:
-        cols = KOBA_EXHIBITOR_PROFILE_KOR if lang == "kor" else KOBA_EXHIBITOR_PROFILE_ENG
+        cols = KPRINT_EXHIBITOR_PROFILE_KOR if lang == "kor" else KPRINT_EXHIBITOR_PROFILE_ENG
     return _profile_text_from_columns(row, cols)
 
 
@@ -294,7 +294,7 @@ def _evidence_chunks_for_entity(
     overlap: int,
     entity: Literal["exhibitor", "exhibit_item"],
 ) -> list[dict[str, Any]]:
-    profile_all = KOBA_EXHIBIT_ITEM_PROFILE_ALL if entity == "exhibit_item" else KOBA_EXHIBITOR_PROFILE_ALL
+    profile_all = KPRINT_EXHIBIT_ITEM_PROFILE_ALL if entity == "exhibit_item" else KPRINT_EXHIBITOR_PROFILE_ALL
     skip = profile_all | {"id"}
     chunks: list[dict[str, Any]] = []
     for col, raw in row.items():
@@ -331,7 +331,7 @@ def _build_embeddings(
         if progress:
             progress(message, percent)
 
-    table_set = _koba_table_set_for_entity(koba_entity, model_id)
+    table_set = _kprint_table_set_for_entity(koba_entity, model_id)
     outputs: dict[str, list[dict[str, Any]]] = {
         table_set.profile_kor: [],
         table_set.profile_eng: [],
@@ -438,8 +438,19 @@ def _build_embeddings(
     return outputs
 
 
-def _embedding_ddl_statements(_table_set: ModelTableSet, *, _parent_table: str) -> list[str]:
-    """KOBA embedding DDL is owned by Alembic; keep only extension ensure for ad-hoc DBs."""
+def _embedding_ddl_statements(
+    _table_set: ModelTableSet,
+    *,
+    parent_table: str | None = None,
+    _parent_table: str | None = None,
+) -> list[str]:
+    """KPRINT embedding DDL is owned by Alembic; keep only extension ensure for ad-hoc DBs.
+
+    Note:
+    - Older call sites used `parent_table=...`
+    - Older definitions used `_parent_table=...`
+    We accept both keywords to avoid runtime crashes during rolling upgrades.
+    """
     return ["CREATE EXTENSION IF NOT EXISTS vector"]
 
 
@@ -454,8 +465,8 @@ def _upsert_embeddings(
         if progress:
             progress(message, percent)
 
-    table_set = _koba_table_set_for_entity(koba_entity, model_id)
-    parent_table = _koba_parent_sql_table(koba_entity)
+    table_set = _kprint_table_set_for_entity(koba_entity, model_id)
+    parent_table = _kprint_parent_sql_table(koba_entity)
     table_specs = [
         (table_set.profile_kor, results.get(table_set.profile_kor, []), "profile"),
         (table_set.profile_eng, results.get(table_set.profile_eng, []), "profile"),
@@ -542,9 +553,9 @@ def _row_from_mapping(record: dict[str, Any], table: sa.Table) -> dict[str, str]
     return row
 
 
-def _fetch_koba_exhibitor_rows(limit: int | None) -> list[dict[str, str]]:
+def _fetch_kprint_exhibitor_rows(limit: int | None) -> list[dict[str, str]]:
     metadata = sa.MetaData()
-    tbl = sa.Table("koba_exhibitor", metadata, autoload_with=engine)
+    tbl = sa.Table("kprint_exhibitor", metadata, autoload_with=engine)
     stmt = sa.select(tbl)
     if "created_at" in tbl.c:
         stmt = stmt.order_by(tbl.c.created_at.asc())
@@ -557,9 +568,9 @@ def _fetch_koba_exhibitor_rows(limit: int | None) -> list[dict[str, str]]:
     return rows
 
 
-def _fetch_koba_exhibit_item_rows(limit: int | None) -> list[dict[str, str]]:
+def _fetch_kprint_exhibit_item_rows(limit: int | None) -> list[dict[str, str]]:
     metadata = sa.MetaData()
-    tbl = sa.Table("koba_exhibit_item", metadata, autoload_with=engine)
+    tbl = sa.Table("kprint_exhibit_item", metadata, autoload_with=engine)
     stmt = sa.select(tbl)
     if "created_at" in tbl.c:
         stmt = stmt.order_by(tbl.c.created_at.asc())
@@ -646,12 +657,24 @@ def search_embedding_tables(
     top_k: int,
     lang: str,
     chunk_type: str,
+    entity_scope: str = "all",
 ) -> list[dict[str, Any]]:
     top_k = max(1, int(top_k))
 
-    bundle = _koba_bundle_for_model(model_id)
+    bundle = _kprint_bundle_for_model(model_id)
     all_specs: list[tuple[str, str, str]] = []
-    for ts in (bundle.exhibitor, bundle.exhibit_item):
+    scopes = {"all", "company", "product"}
+    scope = (entity_scope or "all").strip().lower()
+    if scope not in scopes:
+        scope = "all"
+    if scope == "company":
+        table_sets = (bundle.exhibitor,)
+    elif scope == "product":
+        table_sets = (bundle.exhibit_item,)
+    else:
+        table_sets = (bundle.exhibitor, bundle.exhibit_item)
+
+    for ts in table_sets:
         all_specs.extend(
             [
                 (ts.profile_kor, "profile", "kor"),
@@ -756,3 +779,11 @@ def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str
     if len(lines) <= 2:
         return f"[검색어] {q}\n[프로필 데이터]\n- 표시할 profile 데이터가 없습니다."
     return "\n".join(lines)
+
+
+# Backward-compatible aliases for existing imports/callers.
+_koba_bundle_for_model = _kprint_bundle_for_model
+_koba_table_set_for_entity = _kprint_table_set_for_entity
+_koba_parent_sql_table = _kprint_parent_sql_table
+_fetch_koba_exhibitor_rows = _fetch_kprint_exhibitor_rows
+_fetch_koba_exhibit_item_rows = _fetch_kprint_exhibit_item_rows

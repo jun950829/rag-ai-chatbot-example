@@ -44,5 +44,5 @@ uvicorn embedding.main:app --host 0.0.0.0 --port 8765
 
 ```bash
 export PYTHONPATH="$(pwd)/main"
-python scripts/embed_koba_qwen3_profile_evidence.py --entity exhibitor --limit 100
+python scripts/embed_kprint_qwen3_profile_evidence.py --entity exhibitor --limit 100
 ```

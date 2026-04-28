@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Embed `koba_exhibitor` or `koba_exhibit_item` rows into KOBA pgvector tables (same path as embed_server)."""
+"""Embed `kprint_exhibitor` or `kprint_exhibit_item` rows into KPRINT pgvector tables."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from app.rag.pipeline import (  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Embed KOBA catalog rows into Qwen3 KOBA embedding tables."
+        description="Embed KPRINT catalog rows into Qwen3 KPRINT embedding tables."
     )
     parser.add_argument(
         "--entity",
@@ -46,7 +46,7 @@ def main() -> None:
         else _fetch_koba_exhibit_item_rows(args.limit)
     )
     if not rows:
-        raise SystemExit(f"No rows in koba_{'exhibitor' if args.entity == 'exhibitor' else 'exhibit_item'} to embed.")
+        raise SystemExit(f"No rows in kprint_{'exhibitor' if args.entity == 'exhibitor' else 'exhibit_item'} to embed.")
 
     results = _build_embeddings(
         rows,

@@ -155,6 +155,12 @@ async def execute_retrieval_pipeline(
         }
 
     search_lang = "kor" if language == "ko" else "eng"
+    # intent에 따라 검색 스코프(회사/제품)를 제한한다.
+    entity_scope = "all"
+    if intent == "company":
+        entity_scope = "company"
+    elif intent == "product":
+        entity_scope = "product"
     searches = semantic_search_multi_query(
         queries=planned_queries,
         model_id=cfg.model_id,
@@ -163,6 +169,7 @@ async def execute_retrieval_pipeline(
         lang=search_lang,
         evidence_ratio=cfg.evidence_ratio,
         embedding_remote_base_url=embedding_remote_base_url,
+        entity_scope=entity_scope,
     )
     query_summaries: list[dict[str, Any]] = []
     for bucket in searches:
@@ -173,7 +180,7 @@ async def execute_retrieval_pipeline(
         step=4,
         title="의미 검색",
         detail="쿼리별 profile/evidence 검색 수행",
-        data={"query_summaries": query_summaries, "search_lang": search_lang},
+        data={"query_summaries": query_summaries, "search_lang": search_lang, "entity_scope": entity_scope},
     )
 
     fused = rrf_fuse(searches, rrf_k=cfg.rrf_k)

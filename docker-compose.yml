@@ -12,6 +12,11 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "${APP_PORT:-8000}:8000"
+    volumes:
+      # Allow running ingest/embed scripts inside the api container
+      - ./scripts:/app/scripts:ro
+      # Provide CSV inputs to the ingest scripts
+      - ./data:/app/data:ro
     depends_on:
       db:
         condition: service_healthy

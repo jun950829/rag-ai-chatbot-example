@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ingest `data/KOBA_ExhibitorsExport_2026.csv` into `koba_exhibitor`."""
+"""Ingest `data/KPRINT_ExhibitorsExport_2025.csv` into `kprint_exhibitor`."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ sys.path.insert(0, MAIN_ROOT)
 sys.path.insert(1, PROJECT_ROOT)
 
 from app.db import SessionLocal  # noqa: E402
-from app.koba.models import KobaExhibitor  # noqa: E402
+from app.kprint.models import KprintExhibitor as KobaExhibitor  # noqa: E402
 
 
 def _clean_excel_export_value(value: str | None) -> str | None:
@@ -191,10 +191,10 @@ def ingest_csv(*, csv_path: str, limit: int | None, commit_every: int, dry_run: 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest KOBA_ExhibitorsExport_2026.csv into koba_exhibitor.")
+    parser = argparse.ArgumentParser(description="Ingest KPRINT_ExhibitorsExport_2025.csv into kprint_exhibitor.")
     parser.add_argument(
         "--path",
-        default=os.path.join("data", "KOBA_ExhibitorsExport_2026.csv"),
+        default=os.path.join("data", "KPRINT_ExhibitorsExport_2025.csv"),
         help="Path to the CSV file.",
     )
     parser.add_argument("--limit", type=int, default=None)

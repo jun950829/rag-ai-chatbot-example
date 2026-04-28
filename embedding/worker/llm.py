@@ -28,30 +28,22 @@ def classify_intent_heuristic(message: str, *, previous_intent: str | None = Non
     greeting_words = ("안녕", "안녕하세요", "hello", "hi", "hey")
     followup_starts = ("그럼", "그리고", "그 회사", "그 업체", "then", "also", "what about")
     not_related_words = ("날씨", "주식", "환율", "운세", "점심", "movie", "recipe")
-    new_company_words = (
-        "회사",
-        "업체",
-        "기업",
-        "참가",
-        "전시",
-        "부스",
-        "제품",
-        "exhibitor",
-        "company",
-        "booth",
-    )
+    company_words = ("회사", "업체", "기업", "참가", "전시", "부스", "exhibitor", "company", "booth")
+    product_words = ("전시품", "제품", "상품", "아이템", "product", "item", "model", "모델")
 
     if any(w in text for w in greeting_words):
         return "greeting"
     # 직전이 업체 검색 맥락이면 follow-up 패턴을 우선적으로 본다.
-    if (previous_intent or "").strip() in {"new_company_query", "follow_up"} and _FOLLOWUP_RE.search(text):
+    if (previous_intent or "").strip() in {"company", "product", "follow_up"} and _FOLLOWUP_RE.search(text):
         return "follow_up"
     if text.startswith(followup_starts):
         return "follow_up"
     if any(w in text for w in not_related_words):
         return "not_related"
-    if any(w in text for w in new_company_words):
-        return "new_company_query"
+    if any(w in text for w in product_words):
+        return "product"
+    if any(w in text for w in company_words):
+        return "company"
     return "general"
 
 

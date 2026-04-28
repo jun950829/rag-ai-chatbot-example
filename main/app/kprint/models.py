@@ -9,10 +9,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 
 
-class KobaExhibitor(Base):
-    """KOBA exhibitor row (from KOBA_ExhibitorsExport CSV)."""
+class KprintExhibitor(Base):
+    """KPRINT exhibitor row."""
 
-    __tablename__ = "koba_exhibitor"
+    __tablename__ = "kprint_exhibitor"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     external_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
@@ -71,24 +71,24 @@ class KobaExhibitor(Base):
     )
 
 
-class KobaExhibitItem(Base):
-    """KOBA exhibit item / product row (from KOBA_ExhibitItemsExport CSV)."""
+class KprintExhibitItem(Base):
+    """KPRINT exhibit item / product row."""
 
-    __tablename__ = "koba_exhibit_item"
+    __tablename__ = "kprint_exhibit_item"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     external_id: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True, index=True)
 
     product_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    exhibitor_sn: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    exhibitor_sn: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
 
     item_main_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    item_main_category_label_kor: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    item_main_category_label_eng: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    item_main_category_label_kor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    item_main_category_label_eng: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     item_sub_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    item_sub_category_label_kor: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    item_sub_category_label_eng: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    item_sub_category_label_kor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    item_sub_category_label_eng: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     product_name_kor: Mapped[str | None] = mapped_column(Text, nullable=True)
     product_name_eng: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -106,8 +106,8 @@ class KobaExhibitItem(Base):
     product_description_kor: Mapped[str | None] = mapped_column(Text, nullable=True)
     product_description_eng: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    certification_status_kor: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    certification_status_eng: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    certification_status_kor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    certification_status_eng: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     company_name_kor: Mapped[str | None] = mapped_column(Text, nullable=True)
     company_name_eng: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -115,12 +115,12 @@ class KobaExhibitItem(Base):
     exhibition_category_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     exhibit_hall: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    exhibit_hall_label_kor: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    exhibit_hall_label_eng: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    exhibit_hall_label_kor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exhibit_hall_label_eng: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     exhibit_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    exhibit_status_label_kor: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    exhibit_status_label_eng: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    exhibit_status_label_kor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exhibit_status_label_eng: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     product_image_link: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
@@ -130,3 +130,7 @@ class KobaExhibitItem(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+__all__ = ["KprintExhibitor", "KprintExhibitItem"]
+

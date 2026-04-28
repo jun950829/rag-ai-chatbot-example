@@ -1,5 +1,5 @@
 from app.company.models import Company
-from app.koba.models import KobaExhibitItem, KobaExhibitor
+from app.kprint.models import KprintExhibitItem, KprintExhibitor
 from app.product.models import Product
 
-__all__ = ["Company", "KobaExhibitItem", "KobaExhibitor", "Product"]
+__all__ = ["Company", "KprintExhibitItem", "KprintExhibitor", "Product"]

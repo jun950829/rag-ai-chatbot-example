@@ -5,7 +5,8 @@ from typing import Any
 
 from app.rag.retrieval.memory import ConversationMemory
 
-INTENT_LABELS = {"greeting", "followup", "new_company_query", "general", "not_related"}
+# 검색 의도는 더 이상 new_company가 아니라 company/product로 분기한다.
+INTENT_LABELS = {"greeting", "followup", "company", "product", "general", "not_related"}
 LANGUAGE_LABELS = {"ko", "en"}
 
 _KOREAN_RE = re.compile(r"[가-힣]")
@@ -25,7 +26,33 @@ _GENERIC_REQUEST_PATTERNS = (
 )
 _GREETING_WORDS = ("안녕", "안녕하세요", "반가워", "hello", "hi", "hey")
 _NOT_RELATED_HINTS = ("날씨", "주가", "환율", "점심", "sports", "bitcoin", "movie", "recipe")
-_NEW_COMPANY_HINTS = ("업체", "회사", "기업", "참가", "전시", "부스", "company", "exhibitor", "booth", "hall", "profile")
+_COMPANY_HINTS = (
+    "업체",
+    "회사",
+    "기업",
+    "참가",
+    "참가업체",
+    "전시",
+    "부스",
+    "company",
+    "exhibitor",
+    "booth",
+    "hall",
+    "profile",
+)
+_PRODUCT_HINTS = (
+    "전시품",
+    "제품",
+    "상품",
+    "품목",
+    "아이템",
+    "product",
+    "item",
+    "exhibit item",
+    "model",
+    "모델",
+    "스펙",
+)
 _FOLLOWUP_STARTS = ("그럼", "그리고", "또", "추가로", "then", "also")
 _FOLLOWUP_PRONOUNS = ("그거", "그 회사", "그 업체", "걔", "it", "that")
 _FOLLOWUP_QUESTION_WORDS = ("어디", "뭐", "뭔데", "어떤", "who", "what")
@@ -100,7 +127,6 @@ async def classify_intent_v2(
     model: str = "gpt-4o-mini",
     memory: ConversationMemory | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    del openai_client, model
     n = _norm_text(message)
     if _looks_like_greeting(n):
         return "greeting", {"source": "heuristic_greeting"}
@@ -111,14 +137,41 @@ async def classify_intent_v2(
 
     if any(word in n for word in _NOT_RELATED_HINTS):
         return "not_related", {"source": "heuristic_not_related"}
-    if any(word in n for word in _NEW_COMPANY_HINTS):
-        return "new_company_query", {"source": "heuristic_new_company"}
+    # product/company는 키워드로 우선 분기한다. (둘 다 걸리면 product를 우선)
+    if any(word in n for word in _PRODUCT_HINTS):
+        return "product", {"source": "heuristic_product"}
+    if any(word in n for word in _COMPANY_HINTS):
+        return "company", {"source": "heuristic_company"}
+
+    # 애매하면 LLM fallback (요구사항: general/애매한 경우에만 사용)
+    if openai_client is not None:
+        try:
+            resp = await openai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "너는 전시 RAG 시스템의 intent classifier다.\n"
+                            "가능한 라벨은: company, product, followup, general, not_related.\n"
+                            "반드시 라벨 한 단어만 출력해라."
+                        ),
+                    },
+                    {"role": "user", "content": f"질문: {message}\n라벨만 출력:"},
+                ],
+            )
+            out = ((resp.choices[0].message.content) or "").strip().lower()
+            if out in INTENT_LABELS:
+                return out, {"source": "openai_fallback", "model": model}
+        except Exception:
+            # fallback 실패는 general로 처리 (성능/안정성 우선)
+            pass
+
     return "general", {"source": "heuristic_general"}
 
 
 def _intent_meta_used_openai(intent_meta: dict[str, Any]) -> bool:
-    del intent_meta
-    return False
+    return str(intent_meta.get("source", "")).startswith("openai")
 
 
 def build_intent_heuristic_answer(*, intent: str, language: str, query: str) -> str:

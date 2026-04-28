@@ -23,6 +23,9 @@
       .error { color: #b91c1c; }
       .trace-wrap { border-top: 1px solid #eceff5; padding: 12px; background: #f8fafc; }
       .trace-title { margin: 0 0 8px; font-size: 13px; color: #334155; font-weight: 600; }
+      .trace-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      .trace-col { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+      .trace-col h3 { margin: 0 0 8px; font-size: 12px; color: #0f172a; }
       .trace-log { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
       .trace-item { border-left: 3px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 6px 8px; font-size: 12px; line-height: 1.4; }
       .trace-item.done { border-left-color: #16a34a; }
@@ -40,8 +43,21 @@
         <div id="chat-log" class="chat-log"></div>
         <div id="status" class="status">준비됨</div>
         <div class="trace-wrap">
-          <p class="trace-title">질문 처리 로그 (현재 요청)</p>
-          <div id="trace-log" class="trace-log"></div>
+          <p class="trace-title">질문 처리 로그 (현재 요청) — 검색 / RRF / OpenAI 분리</p>
+          <div class="trace-cols">
+            <div class="trace-col">
+              <h3>검색(임베딩/의미검색)</h3>
+              <div id="trace-search" class="trace-log"></div>
+            </div>
+            <div class="trace-col">
+              <h3>RRF/컨텍스트</h3>
+              <div id="trace-rrf" class="trace-log"></div>
+            </div>
+            <div class="trace-col">
+              <h3>OpenAI/최종답변</h3>
+              <div id="trace-openai" class="trace-log"></div>
+            </div>
+          </div>
         </div>
         <form id="chat-form" class="composer">
           <textarea id="message" placeholder="메시지를 입력하세요"></textarea>
@@ -57,7 +73,9 @@
         const log = document.getElementById("chat-log");
         const statusEl = document.getElementById("status");
         const sendBtn = document.getElementById("send-btn");
-        const traceLogEl = document.getElementById("trace-log");
+        const traceSearchEl = document.getElementById("trace-search");
+        const traceRrfEl = document.getElementById("trace-rrf");
+        const traceOpenaiEl = document.getElementById("trace-openai");
         const sessionId = "web-" + Math.random().toString(36).slice(2, 10);
         let traceTimer = null;
 
@@ -104,18 +122,40 @@
           });
         }
 
+        function _appendTrace(container, item) {
+          const div = document.createElement("div");
+          const status = String(item.status || "");
+          const t = String(item.time || "");
+          div.className = "trace-item" + (status ? (" " + status) : "");
+          div.innerHTML =
+            "<div class='trace-meta'><strong>" + (item.stage || "-") + "</strong> · " + status + (t ? (" · " + t) : "") + "</div>" +
+            "<div>" + (item.detail || "") + "</div>";
+          container.appendChild(div);
+        }
+
         function renderTrace(items) {
-          traceLogEl.innerHTML = "";
+          traceSearchEl.innerHTML = "";
+          traceRrfEl.innerHTML = "";
+          traceOpenaiEl.innerHTML = "";
           (items || []).forEach(function (item) {
-            const div = document.createElement("div");
-            const status = String(item.status || "");
-            div.className = "trace-item" + (status ? (" " + status) : "");
-            div.innerHTML =
-              "<div class='trace-meta'><strong>" + (item.stage || "-") + "</strong> · " + status + "</div>" +
-              "<div>" + (item.detail || "") + "</div>";
-            traceLogEl.appendChild(div);
+            const stage = String(item.stage || "");
+            // step_logs 기반 stage: retrieval_step_4=의미검색, 5=RRF, 6=컨텍스트, 99=최종답변
+            if (stage === "retrieval_step_4" || stage === "retrieval_step_1" || stage === "retrieval_step_2" || stage === "retrieval_step_3") {
+              _appendTrace(traceSearchEl, item);
+            } else if (stage === "retrieval_step_5" || stage === "retrieval_step_6") {
+              _appendTrace(traceRrfEl, item);
+            } else if (stage === "retrieval_step_99") {
+              _appendTrace(traceOpenaiEl, item);
+            } else if (stage.indexOf("openai") >= 0) {
+              _appendTrace(traceOpenaiEl, item);
+            } else {
+              // 기타(큐잉, 워커 consume, SSE 등)는 검색 컬럼 하단에 흘린다.
+              _appendTrace(traceSearchEl, item);
+            }
           });
-          traceLogEl.scrollTop = traceLogEl.scrollHeight;
+          traceSearchEl.scrollTop = traceSearchEl.scrollHeight;
+          traceRrfEl.scrollTop = traceRrfEl.scrollHeight;
+          traceOpenaiEl.scrollTop = traceOpenaiEl.scrollHeight;
         }
 
         async function pollTrace(requestId) {
@@ -141,7 +181,9 @@
           const botEl = addMessage("bot", "");
           try {
             const requestId = await enqueueChat(text);
-            traceLogEl.innerHTML = "";
+            traceSearchEl.innerHTML = "";
+            traceRrfEl.innerHTML = "";
+            traceOpenaiEl.innerHTML = "";
             await pollTrace(requestId);
             if (traceTimer) {
               window.clearInterval(traceTimer);

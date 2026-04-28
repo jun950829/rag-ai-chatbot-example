@@ -23,10 +23,23 @@ async def generate_search_plan_v2(
         base_queries.append(f"{cleaned} 이전 질문 맥락")
         base_queries.append(f"{cleaned} company detail")
         base_queries.append(f"{cleaned} exhibitor info")
+        base_queries.append(f"{cleaned} product detail")
+        base_queries.append(f"{cleaned} exhibit item info")
+    if intent == "company":
+        base_queries.append(f"{cleaned} exhibitor")
+        base_queries.append(f"{cleaned} company profile")
+    if intent == "product":
+        base_queries.append(f"{cleaned} exhibit item")
+        base_queries.append(f"{cleaned} product spec")
     if language == "ko":
-        base_queries.append(f"{cleaned} exhibitor profile")
+        if intent == "product":
+            base_queries.append(f"{cleaned} 전시품")
+            base_queries.append(f"{cleaned} 제품")
+        else:
+            base_queries.append(f"{cleaned} 참가업체")
+            base_queries.append(f"{cleaned} 업체 프로필")
     else:
-        base_queries.append(f"{cleaned} 전시 참가업체")
+        base_queries.append(f"{cleaned} exhibition")
     base_queries = [q for q in _dedupe_keep_order(base_queries) if _is_informative_query(q)]
     merged = _dedupe_keep_order(base_queries)
     target_n = max(min_queries, min(max_queries, len(merged)))

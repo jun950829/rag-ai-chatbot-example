@@ -27,6 +27,7 @@ def semantic_search_multi_query(
     lang: str,
     evidence_ratio: float,
     embedding_remote_base_url: str | None = None,
+    entity_scope: str = "all",
 ) -> list[dict[str, Any]]:
     searches: list[dict[str, Any]] = []
     evidence_k = max(1, int(top_k_per_query * evidence_ratio))
@@ -34,8 +35,22 @@ def semantic_search_multi_query(
     for q in queries:
         logger.info("[retrieval][step4] semantic_search query=%s", q)
         qvec = embed_query_text(q, model_id=model_id, device=device, remote_base_url=embedding_remote_base_url)
-        profile_rows = search_embedding_tables(query_embedding=qvec, model_id=model_id, top_k=profile_k, lang=lang, chunk_type="profile")
-        evidence_rows = search_embedding_tables(query_embedding=qvec, model_id=model_id, top_k=evidence_k, lang=lang, chunk_type="evidence")
+        profile_rows = search_embedding_tables(
+            query_embedding=qvec,
+            model_id=model_id,
+            top_k=profile_k,
+            lang=lang,
+            chunk_type="profile",
+            entity_scope=entity_scope,
+        )
+        evidence_rows = search_embedding_tables(
+            query_embedding=qvec,
+            model_id=model_id,
+            top_k=evidence_k,
+            lang=lang,
+            chunk_type="evidence",
+            entity_scope=entity_scope,
+        )
         merged = sorted(profile_rows + evidence_rows, key=lambda x: x.get("distance", 1.0))[:top_k_per_query]
         normalized = [_normalize_row(row, rank=i) for i, row in enumerate(merged, start=1)]
         searches.append({"query": q, "results": normalized})

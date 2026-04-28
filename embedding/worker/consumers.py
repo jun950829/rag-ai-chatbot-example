@@ -24,6 +24,7 @@ async def _trace(
     stage: str,
     status: str,
     detail: str,
+    data: dict[str, Any] | None = None,
 ) -> None:
     trace_key = f"{settings.llm_trace_prefix}{request_id}"
     payload = {
@@ -32,13 +33,16 @@ async def _trace(
         "status": status,
         "detail": detail,
     }
+    if data:
+        payload["data"] = data
     await redis.rpush(trace_key, json.dumps(payload, ensure_ascii=False))
     await redis.expire(trace_key, 3600)
 
 
-async def _answer_new_company_query(message: str) -> str:
+async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, message: str) -> str:
     endpoint = f"{settings.api_base_url.rstrip('/')}/tools/embedding/api/search"
     form_data = {
+        "session_id": session_id,
         "query": message,
         "model_id": settings.retrieval_model_id,
         "device": settings.retrieval_device,
@@ -57,6 +61,29 @@ async def _answer_new_company_query(message: str) -> str:
     if not response.is_success:
         detail = payload.get("detail") if isinstance(payload, dict) else response.text
         raise RuntimeError(f"retrieval failed: {detail}")
+
+    # API가 생성한 step_logs(검색/ RRF/ OpenAI 등)를 워커 trace로 펼쳐서 저장한다.
+    try:
+        retrieval = payload.get("retrieval") if isinstance(payload, dict) else None
+        step_logs = (retrieval or {}).get("step_logs") if isinstance(retrieval, dict) else None
+        if isinstance(step_logs, list):
+            for s in step_logs:
+                if not isinstance(s, dict):
+                    continue
+                step = s.get("step")
+                title = str(s.get("title", "") or "-")
+                detail = str(s.get("detail", "") or "")
+                await _trace(
+                    redis,
+                    request_id=request_id,
+                    stage=f"retrieval_step_{step}",
+                    status="done",
+                    detail=f"{title} · {detail}",
+                    data={"step": step, "title": title, "detail": detail},
+                )
+    except Exception:
+        # 로깅 실패는 본 흐름을 막지 않는다.
+        pass
     return str(payload.get("answer_korean") or "검색 결과 기반 답변을 생성하지 못했습니다.")
 
 
@@ -105,21 +132,21 @@ async def llm_consumer(redis: Redis) -> None:
                 detail=f"분류 결과: {intent} (previous_intent={prev_intent or '-'})",
             )
 
-            if intent == "new_company_query":
+            if intent in {"company", "product", "follow_up"}:
                 await _trace(
                     redis,
                     request_id=request_id,
-                    stage="retrieval_rrf_openai",
+                    stage="retrieval",
                     status="started",
-                    detail="검색+RRF+OpenAI 답변 경로 시작",
+                    detail="검색 → RRF → OpenAI 단계 시작",
                 )
-                answer = await _answer_new_company_query(job["message"])
+                answer = await _answer_retrieval(redis, request_id=request_id, session_id=session_id, message=job["message"])
                 await _trace(
                     redis,
                     request_id=request_id,
-                    stage="retrieval_rrf_openai",
+                    stage="retrieval",
                     status="done",
-                    detail="검색+RRF+OpenAI 답변 완료",
+                    detail="검색 → RRF → OpenAI 단계 완료",
                 )
             else:
                 answer = _heuristic_answer(intent)

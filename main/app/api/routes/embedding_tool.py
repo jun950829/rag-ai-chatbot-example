@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import logging
+import os
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -21,7 +22,20 @@ _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] /
 
 
 def _embedding_base(settings) -> str:
-    return (settings.embedding_service_url or "").strip().rstrip("/")
+    base = (settings.embedding_service_url or "").strip().rstrip("/")
+    if not base:
+        return ""
+
+    # In Docker, `127.0.0.1`/`localhost` points to the container itself.
+    # If user configured host-local URL, map it to Docker Desktop host gateway.
+    in_container = os.path.exists("/.dockerenv") or os.path.exists("/app/.dockerenv")
+    if in_container:
+        base = base.replace("http://127.0.0.1:", "http://host.docker.internal:")
+        base = base.replace("http://localhost:", "http://host.docker.internal:")
+        base = base.replace("https://127.0.0.1:", "https://host.docker.internal:")
+        base = base.replace("https://localhost:", "https://host.docker.internal:")
+
+    return base
 
 
 @router.get("/tools/embedding", include_in_schema=False)
@@ -79,8 +93,14 @@ async def _forward_form(method: str, path: str, body: bytes, content_type: str) 
             detail="EMBEDDING_SERVICE_URL is not configured. Set it to your local embed server, e.g. http://host.docker.internal:8765",
         )
     url = f"{base}{path}"
-    async with httpx.AsyncClient(timeout=600.0) as client:
-        r = await client.request(method, url, content=body, headers={"Content-Type": content_type})
+    try:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            r = await client.request(method, url, content=body, headers={"Content-Type": content_type})
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Embedding service 연결 실패: {url} ({type(exc).__name__}: {exc})",
+        ) from exc
     return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type", "application/json"))
 
 
@@ -98,14 +118,21 @@ async def proxy_embed_job_status(job_id: str) -> Response:
     if not base:
         raise HTTPException(status_code=503, detail="EMBEDDING_SERVICE_URL is not configured.")
     url = f"{base}/embed/job/{job_id}/status"
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        r = await client.get(url)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.get(url)
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Embedding service 연결 실패: {url} ({type(exc).__name__}: {exc})",
+        ) from exc
     return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type", "application/json"))
 
 
 @router.post("/tools/embedding/api/search", include_in_schema=False)
 async def embedding_tool_search(
     query: str = Form(...),
+    session_id: str | None = Form(default=None),
     model_id: str = Form(...),
     device: str = Form(default="cpu"),
     top_k: int = Form(default=10),
@@ -129,6 +156,7 @@ async def embedding_tool_search(
             openai_api_key=settings.openai_api_key,
             openai_base_url=settings.openai_base_url,
             embedding_remote_base_url=remote,
+            session_id=session_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
