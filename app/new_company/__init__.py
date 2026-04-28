@@ -1,2 +1,0 @@
-"""NewCompany app package."""
-

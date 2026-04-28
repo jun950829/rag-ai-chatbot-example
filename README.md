@@ -117,7 +117,7 @@ Examples:
 This is the target direction for the template:
 
 ```text
-app/
+main/app/
   api/
   core/
   domain/
@@ -169,7 +169,7 @@ Optional local install without Docker:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-api.txt
-uvicorn app.main:app --reload
+uvicorn main.app.main:app --reload
 ```
 
 Local embedding worker (GPU; separate from Docker API):
@@ -180,7 +180,7 @@ pip install -r requirements-api.txt -r embedding/requirements.txt
 uvicorn embedding.main:app --reload --host 0.0.0.0 --port 8765
 ```
 
-RAG pipeline and embedding UI live under `app/rag` and `/tools/embedding` on the API server. See `embedding/README.md` and `app/rag/README.md`.
+RAG pipeline and embedding UI live under `main/app/rag` and `/tools/embedding` on the API server. See `embedding/README.md` and `main/app/rag/README.md`.
 
 Useful URLs:
 

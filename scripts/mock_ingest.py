@@ -18,7 +18,10 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+MAIN_ROOT = os.path.join(PROJECT_ROOT, "main")
+sys.path.insert(0, MAIN_ROOT)
+sys.path.insert(1, PROJECT_ROOT)
 
 from app.company.helpers import apply_company_fields, find_company_by_external_id
 from app.company.models import Company

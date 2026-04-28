@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Embedding tool (API)</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
+      h1 { margin-bottom: 8px; }
+      p { color: #444; }
+      .layout { display: flex; gap: 16px; align-items: flex-start; }
+      .col { width: 50%; min-width: 0; }
+      .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; background: #fff; }
+      form { margin-top: 8px; }
+      .row { margin-bottom: 10px; }
+      label { display: block; margin-bottom: 4px; font-weight: 600; }
+      input, select, textarea { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
+      textarea { min-height: 80px; resize: vertical; }
+      button { padding: 10px 14px; border: 0; background: #111; color: #fff; border-radius: 6px; cursor: pointer; }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      code { background: #f3f3f3; padding: 2px 5px; border-radius: 3px; }
+      .muted { color: #666; font-size: 13px; }
+      #progress-panel { display: none; margin-top: 12px; padding: 12px; border: 1px solid #bbb; border-radius: 8px; background: #fafafa; }
+      #progress-panel.active { display: block; }
+      #job_bar { width: 100%; height: 14px; margin: 10px 0; }
+      .job-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 14px; color: #333; }
+      #job_message { margin: 8px 0 0; line-height: 1.45; }
+      #job_error { margin-top: 12px; padding: 10px; background: #ffe8e8; border-radius: 6px; color: #8b0000; white-space: pre-wrap; display: none; }
+      #job_error.visible { display: block; }
+      #job_result { margin-top: 12px; padding: 10px; background: #eef6ff; border-radius: 6px; display: none; }
+      #job_result.visible { display: block; }
+      .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0a0; margin-right: 6px; animation: pulse 1.2s ease-in-out infinite; }
+      #search_error { margin-top: 10px; padding: 10px; background: #ffe8e8; border-radius: 6px; color: #8b0000; white-space: pre-wrap; display: none; }
+      #search_error.visible { display: block; }
+      #search_result { margin-top: 10px; }
+      #search_result table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 12px; }
+      #search_result th, #search_result td { border: 1px solid #ddd; padding: 6px; text-align: left; vertical-align: top; }
+      .pill { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 11px; background: #f0f0f0; margin-right: 4px; }
+      .search-block { border: 1px solid #e4e4e4; border-radius: 8px; padding: 10px; margin-top: 10px; }
+      .search-log-line { margin: 6px 0; line-height: 1.45; font-size: 13px; }
+      .search-log-data { white-space: pre-wrap; background: #f9f9f9; border-radius: 6px; padding: 8px; font-size: 12px; color: #333; }
+      @keyframes pulse { 0%, 100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1); } }
+      @media (max-width: 1000px) { .layout { flex-direction: column; } .col { width: 100%; } }
+    </style>
+  </head>
+  <body>
+    {% if not embedding_service_configured %}
+    <p class="muted" style="border:1px solid #f0c36d;background:#fff8e6;padding:10px;border-radius:8px;">
+      <strong>EMBEDDING_SERVICE_URL</strong> 이 설정되지 않았습니다. 임베딩 적재 요청은 로컬 임베딩 API로 프록시되지 않습니다.
+      Docker에서는 예: <code>http://host.docker.internal:8765</code>
+    </p>
+    {% endif %}
+    <h1>KOBA 참가업체·전시품 임베딩 + 검색</h1>
+    <p>
+      임베딩 적재는 <strong>로컬 임베딩 서버</strong> API로 프록시되고, 검색·DB 조회·의도/응답 로직은 <strong>이 API 서버</strong>에서 실행됩니다.
+      로컬에서 임베딩 전용 서버 실행: <code>uvicorn embedding.embed_server:app --host 0.0.0.0 --port 8765</code>
+    </p>
+
+    <div class="layout">
+      <section class="col card">
+        <h2>임베딩 적재</h2>
+        <form id="embed-form">
+          <div class="row">
+            <label for="model_id">Model ID</label>
+            <select id="model_id" name="model_id">
+              <option value="Qwen/Qwen3-Embedding-0.6B">Qwen/Qwen3-Embedding-0.6B</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="device">Device (cpu / mps / cuda)</label>
+            <input id="device" type="text" name="device" value="mps" />
+          </div>
+          <div class="row">
+            <label for="batch_size">Batch Size</label>
+            <input id="batch_size" type="number" name="batch_size" value="8" min="1" />
+          </div>
+          <div class="row">
+            <label for="entity_batch_size">Entity Batch Size</label>
+            <input id="entity_batch_size" type="number" name="entity_batch_size" value="64" min="1" />
+          </div>
+          <div class="row">
+            <label for="evidence_max_chars">Evidence Max Chars</label>
+            <input id="evidence_max_chars" type="number" name="evidence_max_chars" value="1200" min="200" />
+          </div>
+          <div class="row">
+            <label for="evidence_overlap">Evidence Overlap</label>
+            <input id="evidence_overlap" type="number" name="evidence_overlap" value="150" min="0" />
+          </div>
+          <div class="row">
+            <label for="koba_target">임베딩 소스</label>
+            <select id="koba_target" name="koba_target">
+              <option value="exhibitors">koba_exhibitor (참가업체)</option>
+              <option value="exhibit_items">koba_exhibit_item (전시품)</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="limit">행 제한 (비우면 전체)</label>
+            <input id="limit" type="number" name="limit" min="1" />
+          </div>
+          <button type="submit" id="submit_btn">임베딩 실행 후 DB 적재</button>
+        </form>
+
+        <div id="progress-panel">
+          <strong><span class="pulse" id="pulse_dot" aria-hidden="true"></span><span id="panel_title">진행 중</span></strong>
+          <progress id="job_bar" max="100" value="0"></progress>
+          <div class="job-meta">
+            <span id="job_percent">0%</span>
+            <span>경과: <span id="elapsed">0</span>초</span>
+          </div>
+          <p id="job_message">작업을 시작합니다…</p>
+          <div id="job_error"></div>
+          <div id="job_result"></div>
+        </div>
+      </section>
+
+      <section class="col card">
+        <h2>벡터 검색</h2>
+        <p class="muted">검색어를 임베딩 후 KOBA 업체·전시품 임베딩 테이블(프로필/근거 × kor/eng)에서 유사도 순으로 반환합니다.</p>
+        <form id="search-form">
+          <div class="row">
+            <label for="search_query">검색어</label>
+            <textarea id="search_query" name="query" placeholder="예: 이동형 X-ray, AI 영상 분석, 혈압 측정 장비"></textarea>
+          </div>
+          <div class="row">
+            <label for="search_model_id">Model ID</label>
+            <select id="search_model_id" name="model_id">
+              <option value="Qwen/Qwen3-Embedding-0.6B">Qwen/Qwen3-Embedding-0.6B</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="search_device">Device</label>
+            <input id="search_device" type="text" name="device" value="cpu" />
+          </div>
+          <div class="row">
+            <label for="search_top_k">Top K</label>
+            <input id="search_top_k" type="number" name="top_k" value="10" min="1" max="100" />
+          </div>
+          <div class="row">
+            <label for="search_chunk_type">Chunk Type</label>
+            <select id="search_chunk_type" name="chunk_type">
+              <option value="all">all</option>
+              <option value="profile">profile</option>
+              <option value="evidence">evidence</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="answer_mode">응답 생성 방식</label>
+            <select id="answer_mode" name="answer_mode">
+              <option value="template">기본 시스템 (템플릿)</option>
+              <option value="openai">OpenAI (의도/뉘앙스 정제)</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="openai_model">OpenAI Model</label>
+            <input id="openai_model" type="text" name="openai_model" value="gpt-4o-mini" />
+          </div>
+          <button type="submit" id="search_btn">검색 실행</button>
+        </form>
+        <div id="search_error"></div>
+        <div id="search_result"></div>
+      </section>
+    </div>
+
+    <script>
+(function () {
+  const form = document.getElementById("embed-form");
+  const panel = document.getElementById("progress-panel");
+  const bar = document.getElementById("job_bar");
+  const msg = document.getElementById("job_message");
+  const pct = document.getElementById("job_percent");
+  const elapsedEl = document.getElementById("elapsed");
+  const errBox = document.getElementById("job_error");
+  const btn = document.getElementById("submit_btn");
+  const pulse = document.getElementById("pulse_dot");
+  const titleEl = document.getElementById("panel_title");
+  const resultBox = document.getElementById("job_result");
+
+  const searchForm = document.getElementById("search-form");
+  const searchBtn = document.getElementById("search_btn");
+  const searchError = document.getElementById("search_error");
+  const searchResult = document.getElementById("search_result");
+  const answerModeEl = document.getElementById("answer_mode");
+  const openaiModelEl = document.getElementById("openai_model");
+
+  function resetError() {
+    errBox.textContent = "";
+    errBox.classList.remove("visible");
+  }
+  function showError(text) {
+    errBox.textContent = text;
+    errBox.classList.add("visible");
+  }
+  function resetResult() {
+    resultBox.textContent = "";
+    resultBox.classList.remove("visible");
+  }
+  function showResult(payload) {
+    const counts = payload.upsert_counts || {};
+    const rowsN = payload.rows_embedded || payload.rows_in_new_company || "-";
+    const ent = payload.koba_entity || "-";
+    const total = payload.total_upserted || 0;
+    resultBox.innerHTML =
+      "<strong>적재 결과</strong>" +
+      "<div>entity: <code>" + ent + "</code></div>" +
+      "<div>rows: <code>" + rowsN + "</code></div>" +
+      "<div>total upserted: <code>" + total + "</code></div>" +
+      "<table><thead><tr><th>table</th><th>upserted</th></tr></thead><tbody>" +
+      Object.keys(counts).map(function (k) {
+        return "<tr><td><code>" + k + "</code></td><td>" + counts[k] + "</td></tr>";
+      }).join("") +
+      "</tbody></table>";
+    resultBox.classList.add("visible");
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    resetError();
+    resetResult();
+    const fd = new FormData(form);
+    const limitVal = (document.getElementById("limit").value || "").trim();
+    if (!limitVal) fd.delete("limit");
+
+    btn.disabled = true;
+    panel.classList.add("active");
+    bar.value = 0;
+    pct.textContent = "0%";
+    msg.textContent = "서버에 작업을 등록하는 중…";
+    titleEl.textContent = "진행 중";
+    pulse.style.display = "inline-block";
+
+    const t0 = Date.now();
+    let pollTimer = null;
+    const elapsedTimer = window.setInterval(function () {
+      elapsedEl.textContent = String(Math.floor((Date.now() - t0) / 1000));
+    }, 400);
+
+    function stopTimers() {
+      window.clearInterval(elapsedTimer);
+      if (pollTimer) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    try {
+      const startRes = await fetch("/tools/embedding/api/embed/job", { method: "POST", body: fd });
+      const startText = await startRes.text();
+      let startJson;
+      try { startJson = JSON.parse(startText); } catch (_) { throw new Error(startRes.ok ? "서버 응답이 JSON이 아닙니다." : startText.slice(0, 400)); }
+      if (!startRes.ok) {
+        const d = startJson.detail;
+        throw new Error(typeof d === "string" ? d : JSON.stringify(d));
+      }
+      const jobId = startJson.job_id;
+      if (!jobId) throw new Error("job_id가 없습니다.");
+
+      async function pollOnce() {
+        const st = await fetch("/tools/embedding/api/embed/job/" + encodeURIComponent(jobId) + "/status");
+        const stText = await st.text();
+        let j;
+        try { j = JSON.parse(stText); } catch (_) { throw new Error("상태 응답 파싱 실패"); }
+        if (!st.ok) throw new Error(j.detail || stText);
+        const p = typeof j.percent === "number" ? j.percent : 0;
+        bar.value = p;
+        pct.textContent = p + "%";
+        msg.textContent = "[" + p + "%] " + (j.message || "…");
+
+        if (j.status === "done") {
+          stopTimers();
+          titleEl.textContent = "완료";
+          pulse.style.display = "none";
+          msg.textContent = "임베딩 및 DB 적재가 완료되었습니다.";
+          if (j.result) showResult(j.result);
+          btn.disabled = false;
+          return true;
+        }
+        if (j.status === "error") {
+          stopTimers();
+          titleEl.textContent = "오류";
+          pulse.style.display = "none";
+          showError(j.error_detail || j.message || "알 수 없는 오류");
+          btn.disabled = false;
+          return true;
+        }
+        return false;
+      }
+
+      const finished = await pollOnce();
+      if (!finished) {
+        pollTimer = window.setInterval(async function () {
+          try {
+            const done = await pollOnce();
+            if (done) return;
+          } catch (ex) {
+            stopTimers();
+            showError(ex.message || String(ex));
+            titleEl.textContent = "오류";
+            pulse.style.display = "none";
+            btn.disabled = false;
+          }
+        }, 450);
+      }
+    } catch (ex) {
+      stopTimers();
+      showError(ex.message || String(ex));
+      titleEl.textContent = "오류";
+      pulse.style.display = "none";
+      btn.disabled = false;
+    }
+  });
+
+  function showSearchError(text) {
+    searchError.textContent = text;
+    searchError.classList.add("visible");
+  }
+  function resetSearchError() {
+    searchError.textContent = "";
+    searchError.classList.remove("visible");
+  }
+  function syncAnswerModeUI() {
+    const useOpenAI = String(answerModeEl.value || "") === "openai";
+    openaiModelEl.disabled = !useOpenAI;
+    openaiModelEl.style.opacity = useOpenAI ? "1" : "0.6";
+  }
+  function renderSearchResults(payload) {
+    const items = payload.results || [];
+    const answer = payload.answer_korean || "";
+    const answerMeta = payload.answer_meta || {};
+    const retrieval = payload.retrieval || {};
+    const stepLogs = retrieval.step_logs || [];
+    const metaText = (answerMeta.mode ? (" (" + answerMeta.mode + (answerMeta.model ? (", " + answerMeta.model) : "") + ")") : "");
+    const escapeHtml = function (s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    };
+
+    const logsHtml = stepLogs.length
+      ? stepLogs.map(function (log) {
+          const dataText = JSON.stringify(log.data || {}, null, 2);
+          return "<div class='search-log-line'>" +
+            "<strong>Step " + escapeHtml(log.step) + ". " + escapeHtml(log.title) + "</strong><br/>" +
+            escapeHtml(log.detail) +
+            "<div class='search-log-data'>" + escapeHtml(dataText) + "</div>" +
+            "</div>";
+        }).join("")
+      : "<div class='muted'>표시할 retrieval 로그가 없습니다.</div>";
+
+    const usage = retrieval.openai_usage_summary || {};
+    const yn = function (v) { return v ? "예" : "아니오"; };
+    const openaiUsageHtml =
+      "<div class='search-block' style='margin-top:8px;padding:8px;background:#f7f9fc;border-color:#d0d8e8;'>" +
+      "<strong>OpenAI 사용 요약</strong>" +
+      "<div style='margin-top:6px;'>" +
+      "<span class='pill'>의도분류 OpenAI: " + yn(usage.intent_classification_used_openai) + "</span>" +
+      "<span class='pill'>쿼리플래너 호출: " + yn(usage.query_planning_called_openai) + "</span>" +
+      "<span class='pill'>쿼리플래너 성공: " + yn(usage.query_planning_succeeded) + "</span>" +
+      "<span class='pill'>벡터검색: " + yn(usage.vector_search_ran) + "</span>" +
+      "<span class='pill'>답변생성 OpenAI: " + yn(usage.answer_generation_used_openai) + "</span>" +
+      "</div>" +
+      "<div class='muted' style='margin-top:6px;line-height:1.45;'>" +
+      escapeHtml(usage.notes_ko || "") +
+      (usage.answer_generation_mode
+        ? (" · 답변모드: <code>" + escapeHtml(usage.answer_generation_mode) + "</code>")
+        : "") +
+      "</div></div>";
+
+    const retrievalSummaryHtml =
+      "<div><span class='pill'>intent: " + escapeHtml(retrieval.intent || "-") + "</span>" +
+      "<span class='pill'>language: " + escapeHtml(retrieval.language || "-") + "</span>" +
+      "<span class='pill'>rrf_candidates: " + escapeHtml(retrieval.rrf_candidates || 0) + "</span></div>" +
+      "<div class='muted' style='margin-top:6px;'>planned_queries: " +
+      escapeHtml((retrieval.planned_queries || []).join(" | ")) + "</div>" +
+      openaiUsageHtml;
+
+    if (!items.length) {
+      searchResult.innerHTML =
+        "<div class='search-block'><strong>검색 처리 로그</strong>" +
+        retrievalSummaryHtml + logsHtml + "</div>" +
+        "<div class='search-block'><p><strong>답변:</strong> " + escapeHtml(answer) + escapeHtml(metaText) + "</p><p class='muted'>결과가 없습니다.</p></div>";
+      return;
+    }
+    const rows = items.map(function (r) {
+      const score = (typeof r.score === "number") ? r.score.toFixed(4) : "-";
+      const distance = (typeof r.distance === "number") ? r.distance.toFixed(4) : "-";
+      return "<tr>" +
+        "<td>" + score + "</td>" +
+        "<td>" + distance + "</td>" +
+        "<td><span class='pill'>" + (r.lang || "-") + "</span><span class='pill'>" + (r.chunk_typ || "-") + "</span></td>" +
+        "<td><code>" + (r.external_id || "") + "</code></td>" +
+        "<td><code>" + (r.table_name || "") + "</code></td>" +
+        "<td>" + (r.source_field || "") + "</td>" +
+        "<td>" + (r.chunk_index == null ? "" : String(r.chunk_index)) + "</td>" +
+        "<td>" + (r.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</td>" +
+        "</tr>";
+    }).join("");
+
+    searchResult.innerHTML =
+      "<div class='search-block'><strong>검색 처리 로그</strong>" +
+      retrievalSummaryHtml + logsHtml + "</div>" +
+      "<div class='search-block'><p><strong>답변:</strong> " + escapeHtml(answer) + escapeHtml(metaText) + "</p></div>" +
+      "<div class='search-block'><div><strong>검색 결과</strong> " +
+      "(count: <code>" + (payload.count || 0) + "</code>, top_k: <code>" + (payload.top_k || 0) + "</code>)</div>" +
+      "<table><thead><tr>" +
+      "<th>score</th><th>distance</th><th>tag</th><th>external_id</th><th>table</th><th>source_field</th><th>chunk_index</th><th>content</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+  }
+
+  searchForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    resetSearchError();
+    searchResult.innerHTML = "";
+
+    const fd = new FormData(searchForm);
+    if (!String(fd.get("query") || "").trim()) {
+      showSearchError("검색어를 입력하세요.");
+      return;
+    }
+    searchBtn.disabled = true;
+    try {
+      const res = await fetch("/tools/embedding/api/search", { method: "POST", body: fd });
+      const text = await res.text();
+      let j;
+      try { j = JSON.parse(text); } catch (_) { throw new Error(res.ok ? "서버 응답이 JSON이 아닙니다." : text.slice(0, 500)); }
+      if (!res.ok) {
+        const d = j.detail;
+        throw new Error(typeof d === "string" ? d : JSON.stringify(d));
+      }
+      renderSearchResults(j);
+    } catch (ex) {
+      showSearchError(ex.message || String(ex));
+    } finally {
+      searchBtn.disabled = false;
+    }
+  });
+  answerModeEl.addEventListener("change", syncAnswerModeUI);
+  syncAnswerModeUI();
+})();
+    </script>
+  </body>
+</html>

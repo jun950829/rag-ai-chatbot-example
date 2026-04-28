@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>챗봇 단계별 디버그</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f8fafc; }
+      .card { background: #fff; border: 1px solid #dbe2ea; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+      textarea { width: 100%; min-height: 80px; border: 1px solid #cfd8e3; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+      button { margin-top: 8px; border: 0; border-radius: 8px; padding: 10px 14px; background: #0f172a; color: #fff; cursor: pointer; }
+      .muted { color: #6b7280; font-size: 13px; }
+      .line { border-left: 3px solid #cbd5e1; padding: 8px 10px; margin: 8px 0; background: #f8fafc; border-radius: 8px; }
+      .ok { border-left-color: #16a34a; }
+      .err { border-left-color: #dc2626; }
+      code { background: #eef2f7; padding: 2px 6px; border-radius: 5px; }
+      #answer { white-space: pre-wrap; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>챗봇 요청 단계별 디버그</h1>
+      <p class="muted">의도 분류 → retrieval/RRF → OpenAI 답변 → SSE 전송 단계를 요청 단위로 확인합니다.</p>
+      <textarea id="message" placeholder="예: 강남업체 알려줘"></textarea>
+      <button id="send-btn">디버그 실행</button>
+      <div id="meta" class="muted" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>SSE 답변</h2>
+      <div id="answer"></div>
+    </div>
+
+    <div class="card">
+      <h2>단계 로그</h2>
+      <div id="trace"></div>
+    </div>
+
+    <script>
+      (function () {
+        const messageEl = document.getElementById("message");
+        const sendBtn = document.getElementById("send-btn");
+        const metaEl = document.getElementById("meta");
+        const answerEl = document.getElementById("answer");
+        const traceEl = document.getElementById("trace");
+        const sessionId = "debug-" + Math.random().toString(36).slice(2, 10);
+        let traceTimer = null;
+
+        function renderTrace(items) {
+          traceEl.innerHTML = "";
+          (items || []).forEach(function (item) {
+            const div = document.createElement("div");
+            const cls = item.status === "error" ? "line err" : (item.status === "done" ? "line ok" : "line");
+            div.className = cls;
+            div.innerHTML =
+              "<div><strong>" + (item.stage || "-") + "</strong> · <code>" + (item.status || "-") + "</code></div>" +
+              "<div>" + (item.detail || "") + "</div>";
+            traceEl.appendChild(div);
+          });
+        }
+
+        async function pollTrace(requestId) {
+          const res = await fetch("/chat/trace/" + encodeURIComponent(requestId));
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "trace 조회 실패");
+          renderTrace(data.trace || []);
+        }
+
+        function streamAnswer(requestId) {
+          return new Promise((resolve, reject) => {
+            const es = new EventSource("/stream/" + encodeURIComponent(requestId));
+            es.addEventListener("token", function (evt) {
+              answerEl.textContent += (answerEl.textContent ? " " : "") + evt.data;
+            });
+            es.addEventListener("done", function () {
+              es.close();
+              resolve();
+            });
+            es.addEventListener("error", function (evt) {
+              es.close();
+              reject(new Error(evt.data || "stream 오류"));
+            });
+            es.onerror = function () {
+              es.close();
+              reject(new Error("SSE 연결 종료"));
+            };
+          });
+        }
+
+        sendBtn.addEventListener("click", async function () {
+          const msg = (messageEl.value || "").trim();
+          if (!msg) return;
+          sendBtn.disabled = true;
+          answerEl.textContent = "";
+          traceEl.innerHTML = "";
+
+          try {
+            const fd = new FormData();
+            fd.append("session_id", sessionId);
+            fd.append("message", msg);
+
+            const res = await fetch("/chat", { method: "POST", body: fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "chat enqueue 실패");
+            const requestId = data.request_id;
+            metaEl.textContent = "request_id: " + requestId;
+
+            if (traceTimer) window.clearInterval(traceTimer);
+            await pollTrace(requestId);
+            traceTimer = window.setInterval(function () {
+              pollTrace(requestId).catch(function () {});
+            }, 800);
+
+            await streamAnswer(requestId);
+            await pollTrace(requestId);
+          } catch (err) {
+            metaEl.textContent = "오류: " + (err.message || String(err));
+          } finally {
+            if (traceTimer) {
+              window.clearInterval(traceTimer);
+              traceTimer = null;
+            }
+            sendBtn.disabled = false;
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

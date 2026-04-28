@@ -15,19 +15,24 @@ from fastapi.responses import JSONResponse
 
 _BASE = Path(__file__).resolve().parent
 _ROOT = _BASE.parent
+_MAIN_ROOT = _ROOT / "main"
+# 루트 app 제거 후에도 `from app...` 임포트가 main/app를 가리키도록 우선순위를 고정한다.
+if str(_MAIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_MAIN_ROOT))
 if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+    sys.path.insert(1, str(_ROOT))
 
 from app.rag.pipeline import (
     DEFAULT_EMBEDDING_DEVICE,
     DEFAULT_EMBEDDING_MODEL_ID,
     _build_embeddings,
-    _fetch_new_company_rows,
+    _fetch_koba_exhibit_item_rows,
+    _fetch_koba_exhibitor_rows,
     _upsert_embeddings,
     embed_query_text,
 )
 
-app = FastAPI(title="Local Embedding API", version="0.2.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title="Local Embedding API", version="0.3.0", docs_url="/docs", redoc_url="/redoc")
 
 JOB_LOCK = threading.Lock()
 JOB_STORE: dict[str, dict[str, Any]] = {}
@@ -76,6 +81,18 @@ def embed_query_endpoint(
     return JSONResponse({"embedding": vec, "embedding_dim": len(vec), "model_id": model_id})
 
 
+def _resolve_koba_rows(
+    koba_target: str,
+    limit: Optional[int],
+) -> tuple[str, list[dict[str, str]]]:
+    t = (koba_target or "exhibitors").strip().lower()
+    if t in ("exhibitor", "exhibitors"):
+        return "exhibitor", _fetch_koba_exhibitor_rows(limit)
+    if t in ("exhibit_item", "exhibit_items", "items"):
+        return "exhibit_item", _fetch_koba_exhibit_item_rows(limit)
+    raise ValueError(f"unknown koba_target={koba_target!r} (use exhibitors|exhibit_items)")
+
+
 async def _run_embed_job_async(
     job_id: str,
     rows: list[dict[str, str]],
@@ -85,6 +102,7 @@ async def _run_embed_job_async(
     device: Optional[str],
     evidence_max_chars: int,
     evidence_overlap: int,
+    koba_entity: str,
 ) -> None:
     def work() -> Optional[dict[str, Any]]:
         def progress(message: str, percent: int) -> None:
@@ -100,12 +118,19 @@ async def _run_embed_job_async(
                 device=device,
                 max_chars=evidence_max_chars,
                 overlap=evidence_overlap,
+                koba_entity=koba_entity,  # type: ignore[arg-type]
                 progress=progress,
             )
             progress("DB 적재(upsert) 시작", 95)
-            upsert_counts = _upsert_embeddings(results, model_id=model_id, progress=progress)
+            upsert_counts = _upsert_embeddings(
+                results,
+                model_id=model_id,
+                koba_entity=koba_entity,  # type: ignore[arg-type]
+                progress=progress,
+            )
             return {
-                "rows_in_new_company": len(rows),
+                "koba_entity": koba_entity,
+                "rows_embedded": len(rows),
                 "upsert_counts": upsert_counts,
                 "total_upserted": sum(upsert_counts.values()),
             }
@@ -143,10 +168,17 @@ async def start_embed_job(
     evidence_max_chars: int = Form(default=1200),
     evidence_overlap: int = Form(default=150),
     limit: Optional[int] = Form(default=None),
+    koba_target: str = Form(default="exhibitors"),
 ) -> JSONResponse:
-    rows = _fetch_new_company_rows(limit)
+    try:
+        koba_entity, rows = _resolve_koba_rows(koba_target, limit)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if not rows:
-        raise HTTPException(status_code=400, detail="new_company 테이블에 데이터가 없습니다.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"KOBA 소스 '{koba_target}' 테이블에 임베딩할 행이 없습니다. 먼저 ingest 스크립트로 CSV를 적재하세요.",
+        )
 
     job_id = str(uuid.uuid4())
     _job_set(job_id, status="queued", message="작업이 대기열에 등록되었습니다.", percent=0)
@@ -160,6 +192,7 @@ async def start_embed_job(
         device or None,
         evidence_max_chars,
         evidence_overlap,
+        koba_entity,
     )
     return JSONResponse({"job_id": job_id})
 
@@ -182,10 +215,17 @@ async def embed_sync(
     evidence_max_chars: int = Form(default=1200),
     evidence_overlap: int = Form(default=150),
     limit: Optional[int] = Form(default=None),
+    koba_target: str = Form(default="exhibitors"),
 ) -> JSONResponse:
-    rows = _fetch_new_company_rows(limit)
+    try:
+        koba_entity, rows = _resolve_koba_rows(koba_target, limit)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if not rows:
-        raise HTTPException(status_code=400, detail="new_company 테이블에 데이터가 없습니다.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"KOBA 소스 '{koba_target}' 테이블에 임베딩할 행이 없습니다.",
+        )
 
     try:
         results = _build_embeddings(
@@ -196,6 +236,7 @@ async def embed_sync(
             device=device or None,
             max_chars=evidence_max_chars,
             overlap=evidence_overlap,
+            koba_entity=koba_entity,  # type: ignore[arg-type]
         )
     except ImportError as e:
         raise HTTPException(
@@ -207,11 +248,16 @@ async def embed_sync(
             ),
         ) from e
 
-    upsert_counts = _upsert_embeddings(results, model_id=model_id)
+    upsert_counts = _upsert_embeddings(
+        results,
+        model_id=model_id,
+        koba_entity=koba_entity,  # type: ignore[arg-type]
+    )
     return JSONResponse(
         {
             "status": "done",
-            "rows_in_new_company": len(rows),
+            "koba_entity": koba_entity,
+            "rows_embedded": len(rows),
             "upsert_counts": upsert_counts,
             "total_upserted": sum(upsert_counts.values()),
         }

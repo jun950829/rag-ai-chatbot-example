@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Queue Monitor</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f8fafc; }
+      .card { background: #fff; border: 1px solid #dbe2ea; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+      h1, h2 { margin: 0 0 8px; }
+      .muted { color: #5f6672; font-size: 13px; }
+      .stat { display: inline-block; margin-right: 14px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+      th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; vertical-align: top; }
+      code { background: #f1f5f9; padding: 2px 5px; border-radius: 5px; }
+      .ok { color: #065f46; }
+      .err { color: #b91c1c; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>챗봇 Redis 큐 모니터</h1>
+      <p class="muted">`/chat`으로 적재된 LLM 큐 상태를 1초 주기로 갱신합니다.</p>
+      <div id="health" class="muted">상태: 로딩 중...</div>
+    </div>
+
+    <div class="card">
+      <h2>큐 길이</h2>
+      <div id="stats"></div>
+    </div>
+
+    <div class="card">
+      <h2>LLM 큐 대기열 미리보기 (최대 5건)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>request_id</th>
+            <th>session_id</th>
+            <th>message_preview</th>
+          </tr>
+        </thead>
+        <tbody id="queue-body"></tbody>
+      </table>
+      <div id="empty" class="muted" style="display:none; margin-top: 8px;">대기 중인 요청이 없습니다.</div>
+    </div>
+
+    <script>
+      (function () {
+        const healthEl = document.getElementById("health");
+        const statsEl = document.getElementById("stats");
+        const bodyEl = document.getElementById("queue-body");
+        const emptyEl = document.getElementById("empty");
+
+        function renderStats(data) {
+          statsEl.innerHTML =
+            "<span class='stat'>LLM 큐: <code>" + data.llm_queue_name + "</code> = <strong>" + data.llm_queue_length + "</strong></span>" +
+            "<span class='stat'>Embedding 큐: <code>" + data.embedding_queue_name + "</code> = <strong>" + data.embedding_queue_length + "</strong></span>";
+        }
+
+        function renderRows(rows) {
+          bodyEl.innerHTML = "";
+          if (!rows || rows.length === 0) {
+            emptyEl.style.display = "block";
+            return;
+          }
+          emptyEl.style.display = "none";
+          rows.forEach(function (row) {
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+              "<td><code>" + (row.request_id || "") + "</code></td>" +
+              "<td><code>" + (row.session_id || "") + "</code></td>" +
+              "<td>" + (row.message_preview || "") + "</td>";
+            bodyEl.appendChild(tr);
+          });
+        }
+
+        async function tick() {
+          try {
+            const res = await fetch("/chat/queue/status");
+            const data = await res.json();
+            if (!res.ok) {
+              throw new Error(typeof data.detail === "string" ? data.detail : "상태 조회 실패");
+            }
+            healthEl.className = "ok";
+            healthEl.textContent = "상태: 연결됨 (" + new Date().toLocaleTimeString() + ")";
+            renderStats(data);
+            renderRows(data.llm_queue_head_preview || []);
+          } catch (err) {
+            healthEl.className = "err";
+            healthEl.textContent = "상태: 오류 - " + (err.message || String(err));
+          }
+        }
+
+        tick();
+        window.setInterval(tick, 1000);
+      })();
+    </script>
+  </body>
+</html>

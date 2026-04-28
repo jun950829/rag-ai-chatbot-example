@@ -56,6 +56,33 @@ services:
       retries: 10
     restart: unless-stopped
 
+  worker:
+    build:
+      context: ./embedding
+      dockerfile: Dockerfile
+    container_name: exmatch_rag_template_worker
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      POSTGRES_DSN: ${WORKER_POSTGRES_DSN:-postgresql+asyncpg://postgres:postgres@db:5432/rag_template}
+      API_BASE_URL: ${WORKER_API_BASE_URL:-http://api:8000}
+      LLM_QUEUE_NAME: ${LLM_QUEUE_NAME:-queue:llm}
+      EMBEDDING_QUEUE_NAME: ${EMBEDDING_QUEUE_NAME:-queue:embedding}
+      LLM_STREAM_PREFIX: ${LLM_STREAM_PREFIX:-stream:llm:}
+      LLM_TRACE_PREFIX: ${LLM_TRACE_PREFIX:-trace:llm:}
+      EMBED_RESULT_PREFIX: ${EMBED_RESULT_PREFIX:-result:embed:}
+      EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-32}
+      MAX_RETRY: ${MAX_RETRY:-3}
+      RETRIEVAL_MODEL_ID: ${RETRIEVAL_MODEL_ID:-Qwen/Qwen3-Embedding-0.6B}
+      RETRIEVAL_DEVICE: ${RETRIEVAL_DEVICE:-cpu}
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-8}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
