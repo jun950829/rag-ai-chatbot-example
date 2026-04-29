@@ -1,4 +1,8 @@
-"""챗봇 큐 API + SSE 스트림 엔드포인트."""
+"""챗봇 큐 API + SSE 스트림 엔드포인트.
+
+API는 LLM을 직접 호출하지 않고 Redis 큐/스트림만 다룬다. RAG 검색 UI는 ``embedding_tool`` 과 분리되어 있다.
+전체 구조: ``docs/CHATBOT_ARCHITECTURE.md``
+"""
 
 from __future__ import annotations
 

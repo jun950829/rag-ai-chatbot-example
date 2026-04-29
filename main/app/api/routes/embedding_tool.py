@@ -1,4 +1,10 @@
-"""Embedding tool UI + search (DB in this process); embed inference proxied to local embedding API."""
+"""Embedding tool UI + RAG 검색 API.
+
+- **HTML**: ``/tools/embedding``, ``/tools/chatbot`` 등 Jinja 템플릿
+- **검색**: ``POST .../api/search`` → ``run_vector_search`` (의도 분류·벡터 검색·선택적 OpenAI 답변)
+- **QA 퀵메뉴**: ``GET .../api/qa-quickmenu/...`` → ``kprint_qa_quickmenu`` (CSV 적재 테이블, 카테고리 탐색)
+- 임베딩 추론은 별도 ``EMBEDDING_SERVICE_URL`` 서버로 프록시
+"""
 
 from __future__ import annotations
 
@@ -8,11 +14,16 @@ from typing import Any
 import httpx
 import logging
 import os
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import get_settings
+from app.db.repositories.kprint_qa_quickmenu_repository import (
+    KprintQaQuickmenuRepository,
+    quickmenu_row_to_dict,
+)
+from app.db.session import AsyncSessionLocal
 from app.rag.search_service import run_vector_search
 
 router = APIRouter(tags=["embedding-tool"])
@@ -166,3 +177,67 @@ async def embedding_tool_search(
         logger.exception("embedding_tool_search failed")
         raise HTTPException(status_code=500, detail=f"검색 처리 실패: {type(e).__name__}: {e}") from e
     return JSONResponse(payload)
+
+
+# --- QA 퀵메뉴 (kprint_qa_quickmenu): 메인 1차 버튼 + follow 링크 조회 -----------------
+
+
+@router.get("/tools/embedding/api/qa-quickmenu/primary", include_in_schema=False)
+async def qa_quickmenu_primary(
+    qa_user: str | None = Query(default=None, description="CSV user 열과 동일 (예: visitor)"),
+    domain: str | None = Query(default=None),
+    include_prompt: bool = Query(default=False, description="긴 default_answer_prompt 포함 여부"),
+) -> JSONResponse:
+    """``primary_question=true`` 행만 반환 — 챗봇 메인 카테고리 버튼 소스."""
+    async with AsyncSessionLocal() as db:
+        repo = KprintQaQuickmenuRepository(db)
+        rows = await repo.list_primary_rows(qa_user=qa_user, domain=domain)
+        return JSONResponse(
+            {"count": len(rows), "items": [quickmenu_row_to_dict(r, include_prompt=include_prompt) for r in rows]}
+        )
+
+
+@router.get("/tools/embedding/api/qa-quickmenu/by-parent", include_in_schema=False)
+async def qa_quickmenu_by_parent(
+    parent_id: str = Query(..., description="예: ko1, ko2"),
+    include_prompt: bool = Query(default=False),
+) -> JSONResponse:
+    """같은 ``parent_id`` 그룹 행 — CSV 상 형제/그룹 탐색용."""
+    async with AsyncSessionLocal() as db:
+        repo = KprintQaQuickmenuRepository(db)
+        rows = await repo.list_by_parent_id(parent_id)
+        return JSONResponse(
+            {"parent_id": parent_id.strip(), "count": len(rows), "items": [quickmenu_row_to_dict(r, include_prompt=include_prompt) for r in rows]}
+        )
+
+
+@router.get("/tools/embedding/api/qa-quickmenu/{qna_code}", include_in_schema=False)
+async def qa_quickmenu_one(
+    qna_code: str,
+    include_prompt: bool = Query(default=True),
+) -> JSONResponse:
+    """단일 행 상세."""
+    async with AsyncSessionLocal() as db:
+        repo = KprintQaQuickmenuRepository(db)
+        row = await repo.get_row(qna_code)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"unknown qna_code: {qna_code}")
+        return JSONResponse({"item": quickmenu_row_to_dict(row, include_prompt=include_prompt)})
+
+
+@router.get("/tools/embedding/api/qa-quickmenu/{qna_code}/follow-links", include_in_schema=False)
+async def qa_quickmenu_follow_links(
+    qna_code: str,
+    include_prompt: bool = Query(default=False),
+) -> JSONResponse:
+    """해당 행의 ``follow_question*`` / ``default_quickmenu`` 에 나온 ``qna_code`` 순서대로 전개."""
+    async with AsyncSessionLocal() as db:
+        repo = KprintQaQuickmenuRepository(db)
+        rows = await repo.list_follow_link_rows(qna_code)
+        return JSONResponse(
+            {
+                "from_qna_code": qna_code.strip(),
+                "count": len(rows),
+                "items": [quickmenu_row_to_dict(r, include_prompt=include_prompt) for r in rows],
+            }
+        )

@@ -1,4 +1,13 @@
-"""Vector search + answer assembly (runs in the API process; vectors may come from a remote embed server)."""
+"""RAG 검색 오케스트레이션 (API 프로세스 내 동기 DB + 선택적 원격 임베딩).
+
+흐름 요약:
+1. ``session_id`` 가 있으면 Async DB에서 ``ConversationMemory`` 적재·히스토리 여부 계산
+2. ``execute_retrieval_pipeline`` — 의도/검색축 분류 → (검색형이면) 쿼리 계획 → pgvector 다중 쿼리 검색 → RRF·컷오프
+3. 세션 모드에서는 **분류·검색이 끝난 뒤** ``MessageService.save_user_message`` 로 intent·``retrieval_topic``·follow-up 메타 저장
+4. 답변: 템플릿 또는 OpenAI (``answer_mode``)
+
+자세한 구조는 저장소 루트 ``docs/CHATBOT_ARCHITECTURE.md`` 참고.
+"""
 
 from __future__ import annotations
 

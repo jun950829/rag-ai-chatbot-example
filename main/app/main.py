@@ -1,3 +1,13 @@
+"""FastAPI 앱 팩토리.
+
+라우팅 구성:
+- ``api_router``: ``{API_PREFIX}`` 아래 REST (health, companies, products)
+- ``embedding_tool_router``: UI + ``/tools/embedding/api/search`` 등 (프리픽스 없음)
+- ``chatbot_router``: Redis 큐 기반 ``/chat`` + SSE ``/stream/{id}`` (프리픽스 없음)
+
+아키텍처 설명: ``docs/CHATBOT_ARCHITECTURE.md``
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
