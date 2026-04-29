@@ -40,6 +40,32 @@ def follow_codes_from_row(row: KprintQaQuickmenu) -> list[str]:
     )
 
 
+def follow_codes_1_to_4_from_row(row: KprintQaQuickmenu) -> list[str]:
+    """요청사항 기준: 후속 질문 버튼은 follow_question1~4 우선 사용."""
+    return _dedupe_codes(
+        [
+            row.follow_question1,
+            row.follow_question2,
+            row.follow_question3,
+            row.follow_question4,
+        ]
+    )
+
+
+def _candidate_codes(raw_code: str) -> list[str]:
+    """follow 코드 매칭 후보.
+
+    CSV에는 km_* 형태가 들어있고, 실제 qna_code가 kp_*인 경우가 있어 둘 다 시도한다.
+    """
+    c = (raw_code or "").strip()
+    if not c:
+        return []
+    out = [c]
+    if c.startswith("km_"):
+        out.append("kp_" + c[3:])
+    return _dedupe_codes(out)
+
+
 def quickmenu_row_to_dict(row: KprintQaQuickmenu, *, include_prompt: bool = True) -> dict:
     """API 응답용 dict (긴 ``default_answer_prompt`` 는 필요 시 생략)."""
     d: dict = {
@@ -127,3 +153,56 @@ class KprintQaQuickmenuRepository:
             return []
         ordered = follow_codes_from_row(row)
         return await self.list_rows_by_codes_ordered(ordered)
+
+    async def resolve_follow_question_rows(self, row: KprintQaQuickmenu) -> list[dict]:
+        """follow_question1~4를 실제 row로 해석해 객체 형태로 반환.
+
+        반환 예:
+          {
+            "slot": "follow_question1",
+            "code": "km_vis_regist_006",
+            "resolved_qna_code": "kp_vis_regist_006",
+            "item": {...quickmenu row...} | None
+          }
+        """
+        slots = [
+            ("follow_question1", row.follow_question1),
+            ("follow_question2", row.follow_question2),
+            ("follow_question3", row.follow_question3),
+            ("follow_question4", row.follow_question4),
+        ]
+        raw_codes = [str(v).strip() for _, v in slots if str(v or "").strip()]
+        if not raw_codes:
+            return []
+
+        # 한 번의 IN 조회를 위해 모든 후보 코드를 펼친다.
+        all_candidates: list[str] = []
+        for rc in raw_codes:
+            all_candidates.extend(_candidate_codes(rc))
+        all_candidates = _dedupe_codes(all_candidates)
+
+        stmt = select(KprintQaQuickmenu).where(KprintQaQuickmenu.qna_code.in_(all_candidates))
+        res = await self.session.execute(stmt)
+        by_code = {r.qna_code: r for r in res.scalars().all()}
+
+        out: list[dict] = []
+        for slot_name, raw in slots:
+            code = str(raw or "").strip()
+            if not code:
+                continue
+            resolved = None
+            resolved_code = None
+            for cand in _candidate_codes(code):
+                if cand in by_code:
+                    resolved = by_code[cand]
+                    resolved_code = cand
+                    break
+            out.append(
+                {
+                    "slot": slot_name,
+                    "code": code,
+                    "resolved_qna_code": resolved_code,
+                    "item": quickmenu_row_to_dict(resolved, include_prompt=False) if resolved is not None else None,
+                }
+            )
+        return out

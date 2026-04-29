@@ -90,6 +90,11 @@ def _csv_row_to_db_dict(row: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def _is_effectively_empty_row(row: dict[str, str]) -> bool:
+    """CSV에서 구분용으로 들어간 빈 줄(모든 컬럼 공백)을 감지."""
+    return all(_strip(v) is None for v in row.values())
+
+
 def upsert_rows(session, rows: list[dict[str, Any]], *, chunk_size: int = 50) -> int:
     """PostgreSQL ON CONFLICT DO UPDATE 로 일괄 반영 (created_at 유지, updated_at 갱신)."""
     n = 0
@@ -124,6 +129,8 @@ def main() -> None:
         raise SystemExit(f"CSV 없음: {args.csv_path}")
 
     parsed: list[dict[str, Any]] = []
+    skipped_empty_rows = 0
+    skipped_missing_code = 0
     with open(args.csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         if not reader.fieldnames or "qna_code" not in reader.fieldnames:
@@ -131,12 +138,23 @@ def main() -> None:
         for idx, row in enumerate(reader, start=1):
             if args.limit is not None and idx > args.limit:
                 break
+            # 구분용 빈 줄은 에러로 보지 않고 스킵한다.
+            if _is_effectively_empty_row(row):
+                skipped_empty_rows += 1
+                continue
             try:
                 parsed.append(_csv_row_to_db_dict(row))
             except ValueError as e:
+                # qna_code만 비어 있는 행(메모/비정형 라인)은 스킵하고 계속 진행.
+                if "qna_code 가 비어 있음" in str(e):
+                    skipped_missing_code += 1
+                    continue
                 raise SystemExit(f"행 {idx} 파싱 실패: {e}") from e
 
-    print(f"파싱 완료: {len(parsed)} 행 (파일: {args.csv_path})")
+    print(
+        f"파싱 완료: {len(parsed)} 행 (파일: {args.csv_path}, "
+        f"빈줄 스킵={skipped_empty_rows}, qna_code 없음 스킵={skipped_missing_code})"
+    )
 
     if args.dry_run:
         primaries = sum(1 for r in parsed if r["primary_question"])

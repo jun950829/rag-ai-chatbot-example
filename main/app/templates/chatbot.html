@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>챗봇 콘솔</title>
+    <title>Test_AI 챗봇 콘솔</title>
     <style>
       body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #f5f7fb; color: #111; }
       .wrap { max-width: 980px; margin: 28px auto; padding: 0 16px; }
@@ -11,14 +11,50 @@
       .head { padding: 16px 18px; border-bottom: 1px solid #eceff5; }
       .head h1 { margin: 0; font-size: 20px; }
       .head p { margin: 6px 0 0; color: #5d6470; font-size: 13px; }
-      .chat-log { height: 58vh; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #fbfcff; }
+      .category-wrap { border-bottom: 1px solid #eceff5; padding: 12px 14px; background: #f8fafc; }
+      .cat-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+      button.cat-btn {
+        border: 1px solid #d9e0ec;
+        border-radius: 999px;
+        padding: 7px 12px;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: none !important;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.cat-btn:hover {
+        background: #f1f5f9 !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+      }
+      .cat-chips { display: flex; gap: 8px; flex-wrap: wrap; background: #fff; }
+      button.cat-chip {
+        border: 1px solid #d9e0ec;
+        border-radius: 10px;
+        padding: 7px 11px;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        box-shadow: none !important;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      button.cat-chip:hover {
+        background: #f8fafc !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+      }
+      .cat-status { margin-top: 8px; font-size: 12px; color: #64748b; }
+      .chat-log { height: 46vh; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #fbfcff; }
       .msg { max-width: 78%; border-radius: 12px; padding: 10px 12px; white-space: pre-wrap; line-height: 1.5; font-size: 14px; }
       .msg.user { align-self: flex-end; background: #111827; color: #fff; }
       .msg.bot { align-self: flex-start; background: #fff; border: 1px solid #e3e8f3; color: #111; }
       .composer { border-top: 1px solid #eceff5; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
       textarea { width: 100%; min-height: 50px; max-height: 160px; resize: vertical; border: 1px solid #d8deea; border-radius: 10px; padding: 10px; font: inherit; }
-      button { border: 0; background: #1e293b; color: #fff; border-radius: 10px; padding: 0 16px; font-weight: 600; cursor: pointer; }
-      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      #send-btn { border: 0; background: #1e293b; color: #fff; border-radius: 10px; padding: 0 16px; font-weight: 600; cursor: pointer; }
+      #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .status { padding: 8px 14px 0; font-size: 12px; color: #6b7280; }
       .error { color: #b91c1c; }
       .trace-wrap { border-top: 1px solid #eceff5; padding: 12px; background: #f8fafc; }
@@ -31,15 +67,41 @@
       .trace-item.done { border-left-color: #16a34a; }
       .trace-item.error { border-left-color: #dc2626; }
       .trace-meta { color: #475569; margin-bottom: 2px; }
+      .faq-follow-wrap { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+      button.faq-follow-btn {
+        border: 1px solid #cbd5e1;
+        border-radius: 999px;
+        padding: 5px 10px;
+        background: #f8fafc !important;
+        color: #0f172a !important;
+        box-shadow: none !important;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      button.faq-follow-btn:hover {
+        background: #eef2f7 !important;
+        border-color: #94a3b8 !important;
+        color: #0f172a !important;
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
       <div class="card">
         <div class="head">
-          <h1>운영 챗봇 UI (Queue + SSE)</h1>
-          <p>요청은 <code>/chat</code>으로 큐잉되고, 응답은 <code>/stream/{request_id}</code> SSE로 표시됩니다.</p>
+          <h1>운영 챗봇 UI (Test_AI + Queue + SSE)</h1>
+          <p>카테고리로 저장 답변을 바로 보고, 필요하면 자유 질문을 <code>/chat</code> 큐로 전송할 수 있습니다.</p>
         </div>
+
+        <div class="category-wrap">
+          <div class="cat-row">
+            <button type="button" class="cat-btn" data-user="visitor">참관객 FAQ</button>
+            <button type="button" class="cat-btn" data-user="exhibitor">참가업체 FAQ</button>
+          </div>
+          <div id="cat-chips" class="cat-chips"></div>
+          <div id="cat-status" class="cat-status">카테고리 로딩 중...</div>
+        </div>
+
         <div id="chat-log" class="chat-log"></div>
         <div id="status" class="status">준비됨</div>
         <div class="trace-wrap">
@@ -76,8 +138,12 @@
         const traceSearchEl = document.getElementById("trace-search");
         const traceRrfEl = document.getElementById("trace-rrf");
         const traceOpenaiEl = document.getElementById("trace-openai");
+        const catChipsEl = document.getElementById("cat-chips");
+        const catStatusEl = document.getElementById("cat-status");
+        const catBtns = Array.from(document.querySelectorAll(".cat-btn"));
         const sessionId = "web-" + Math.random().toString(36).slice(2, 10);
         let traceTimer = null;
+        let currentFaqUser = "visitor";
 
         function addMessage(role, text) {
           const box = document.createElement("div");
@@ -86,6 +152,148 @@
           log.appendChild(box);
           log.scrollTop = log.scrollHeight;
           return box;
+        }
+
+        async function getJson(url) {
+          const res = await fetch(url);
+          const payload = await res.json();
+          if (!res.ok) {
+            throw new Error(typeof payload.detail === "string" ? payload.detail : "요청 실패");
+          }
+          return payload;
+        }
+
+        async function loadPrimaryCategories(userType) {
+          currentFaqUser = userType;
+          catStatusEl.textContent = "카테고리 로딩 중...";
+          catChipsEl.innerHTML = "";
+          try {
+            const data = await getJson("/tools/embedding/api/qa-quickmenu/primary?qa_user=" + encodeURIComponent(userType));
+            const items = data.items || [];
+            if (!items.length) {
+              catStatusEl.textContent = "표시할 카테고리가 없습니다.";
+              return;
+            }
+            items.forEach((item) => {
+              const chip = document.createElement("button");
+              chip.type = "button";
+              chip.className = "cat-chip";
+              chip.textContent = item.quickmenu_label || item.qna_code;
+              chip.addEventListener("click", async () => {
+                await showStoredAnswer(item.qna_code, true);
+              });
+              catChipsEl.appendChild(chip);
+            });
+            catStatusEl.textContent = "카테고리를 선택하면 저장된 답변을 바로 보여줍니다.";
+          } catch (e) {
+            catStatusEl.textContent = "카테고리 로드 실패: " + (e.message || String(e));
+          }
+        }
+
+        function addFaqAnswerMessage(item, followItems) {
+          const answerText = (item.answer_sample || item.answer_question || "저장된 답변이 없습니다.").trim();
+          const linkText = (item.links || "").trim();
+          return "A. " + answerText + (linkText ? ("\\n링크: " + linkText) : "");
+        }
+
+        function sleep(ms) {
+          return new Promise((resolve) => setTimeout(resolve, ms));
+        }
+
+        async function streamFaqAnswerLikeSearch(item, followItems) {
+          // 1초 정도 로딩 버블을 먼저 보여줘서 일반 채팅 응답 대기감과 유사하게 만든다.
+          const loadingBox = document.createElement("div");
+          loadingBox.className = "msg bot";
+          loadingBox.textContent = "답변 준비 중";
+          log.appendChild(loadingBox);
+          log.scrollTop = log.scrollHeight;
+
+          let dot = 0;
+          const loadingTimer = window.setInterval(() => {
+            dot = (dot + 1) % 4;
+            loadingBox.textContent = "답변 준비 중" + ".".repeat(dot);
+            log.scrollTop = log.scrollHeight;
+          }, 240);
+
+          statusEl.classList.remove("error");
+          statusEl.textContent = "FAQ 응답 생성 대기 중...";
+          await sleep(1000);
+          window.clearInterval(loadingTimer);
+          loadingBox.remove();
+
+          const botBox = document.createElement("div");
+          botBox.className = "msg bot";
+          botBox.textContent = "";
+          log.appendChild(botBox);
+          log.scrollTop = log.scrollHeight;
+
+          statusEl.textContent = "카테고리 응답을 검색/조합 중...";
+
+          const finalText = addFaqAnswerMessage(item, followItems);
+          const tokens = finalText.split(/(\s+)/);
+          for (const tk of tokens) {
+            botBox.textContent += tk;
+            log.scrollTop = log.scrollHeight;
+            await sleep(16 + Math.floor(Math.random() * 18));
+          }
+
+          if (Array.isArray(followItems) && followItems.length) {
+            const wrap = document.createElement("div");
+            wrap.className = "faq-follow-wrap";
+            followItems.forEach((n) => {
+              const b = document.createElement("button");
+              b.type = "button";
+              b.className = "faq-follow-btn";
+              b.textContent = n.quickmenu_label || n.qna_code;
+              b.addEventListener("click", async () => {
+                await showStoredAnswer(n.qna_code, true);
+              });
+              wrap.appendChild(b);
+            });
+            botBox.appendChild(wrap);
+          }
+          statusEl.textContent = "완료";
+        }
+
+        async function showStoredAnswer(qnaCode, withFollow) {
+          try {
+            const detail = await getJson("/tools/embedding/api/qa-quickmenu/" + encodeURIComponent(qnaCode));
+            const item = detail.item || {};
+            const qText = (item.question_sample || item.quickmenu_label || item.qna_code || qnaCode).trim();
+            if (qText) {
+              input.value = qText; // 질문 UI에 자동 반영
+              addMessage("user", qText);
+            }
+
+            let nextItems = [];
+
+            if (withFollow) {
+              // qa_quickmenu_one 응답의 follow_questions_resolved를 우선 사용한다.
+              // (raw code + resolved row(item) 동시 포함)
+              const resolved = Array.isArray(item.follow_questions_resolved) ? item.follow_questions_resolved : [];
+              if (resolved.length) {
+                nextItems = resolved.map((r) => {
+                  const it = r.item || {};
+                  const code = String(r.resolved_qna_code || r.code || "").trim();
+                  return {
+                    qna_code: code || String(r.code || "").trim(),
+                    quickmenu_label: it.quickmenu_label || code || String(r.code || "").trim(),
+                  };
+                });
+              } else {
+                // 하위 호환: resolved가 없는 경우에만 follow-links 엔드포인트를 보조 사용
+                const next = await getJson("/tools/embedding/api/qa-quickmenu/" + encodeURIComponent(qnaCode) + "/follow-links");
+                nextItems = next.items || [];
+              }
+              catStatusEl.textContent = nextItems.length
+                ? "답변 아래 후속 질문 버튼이 생성되었습니다."
+                : "후속 질문이 없는 항목입니다.";
+            }
+
+            await streamFaqAnswerLikeSearch(item, nextItems);
+          } catch (e) {
+            addMessage("bot", "저장 FAQ 조회 실패: " + (e.message || String(e)));
+          }
         }
 
         async function enqueueChat(message) {
@@ -139,7 +347,6 @@
           traceOpenaiEl.innerHTML = "";
           (items || []).forEach(function (item) {
             const stage = String(item.stage || "");
-            // step_logs 기반 stage: retrieval_step_4=의미검색, 5=RRF, 6=컨텍스트, 99=최종답변
             if (stage === "retrieval_step_4" || stage === "retrieval_step_1" || stage === "retrieval_step_2" || stage === "retrieval_step_3") {
               _appendTrace(traceSearchEl, item);
             } else if (stage === "retrieval_step_5" || stage === "retrieval_step_6") {
@@ -149,7 +356,6 @@
             } else if (stage.indexOf("openai") >= 0) {
               _appendTrace(traceOpenaiEl, item);
             } else {
-              // 기타(큐잉, 워커 consume, SSE 등)는 검색 컬럼 하단에 흘린다.
               _appendTrace(traceSearchEl, item);
             }
           });
@@ -166,6 +372,12 @@
           }
           renderTrace(payload.trace || []);
         }
+
+        catBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            loadPrimaryCategories(btn.getAttribute("data-user") || "visitor");
+          });
+        });
 
         form.addEventListener("submit", async function (e) {
           e.preventDefault();
@@ -207,6 +419,9 @@
             sendBtn.disabled = false;
           }
         });
+
+        addMessage("bot", "안녕하세요. Test_AI 입니다. 상단 카테고리를 먼저 눌러 빠르게 FAQ를 확인하거나, 아래에 자유 질문을 입력해 주세요.");
+        loadPrimaryCategories(currentFaqUser);
       })();
     </script>
   </body>

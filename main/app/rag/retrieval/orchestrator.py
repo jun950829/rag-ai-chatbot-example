@@ -13,6 +13,7 @@ from app.rag.retrieval.intent import (
     classify_intent_v2,
     detect_language,
     entity_scope_from_retrieval_topic,
+    normalize_user_query,
 )
 from app.rag.retrieval.logging_utils import append_step, build_openai_usage_summary
 from app.rag.retrieval.memory import ConversationMemory
@@ -34,10 +35,18 @@ async def execute_retrieval_pipeline(
     memory: ConversationMemory | None = None,
 ) -> dict[str, Any]:
     cfg = config or RetrievalConfig()
-    normalized_query = (query or "").strip()
+    raw_query = (query or "")
+    normalized_query = normalize_user_query(raw_query)
     if not normalized_query:
         raise ValueError("query is empty")
     step_logs: list[dict[str, Any]] = []
+    append_step(
+        step_logs,
+        step=0,
+        title="입력 정규화",
+        detail="공백/특수문자를 정리해 의도분류·플래너 공통 입력으로 변환",
+        data={"raw_query": raw_query, "normalized_query": normalized_query},
+    )
     if memory is not None:
         memory.add("user", normalized_query)
 

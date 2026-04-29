@@ -73,6 +73,7 @@ def chatbot_tool_page(request: Request):
     )
 
 
+
 @router.get("/tools/chatbot-queue", include_in_schema=False)
 def chatbot_queue_page(request: Request):
     return _TEMPLATES.TemplateResponse(
@@ -182,6 +183,51 @@ async def embedding_tool_search(
 # --- QA 퀵메뉴 (kprint_qa_quickmenu): 메인 1차 버튼 + follow 링크 조회 -----------------
 
 
+@router.get("/tools/embedding/api/qa-quickmenu/landing", include_in_schema=False)
+async def qa_quickmenu_landing() -> JSONResponse:
+    """Test_AI 랜딩용 메타: 인사 문구 + 허브 3종(참관객 FAQ / 참가업체 FAQ / RAG 검색 시드).
+
+    실제 1차 질문 목록은 ``primary?qa_user=visitor|exhibitor`` 로 가져온다.
+    """
+    async with AsyncSessionLocal() as db:
+        repo = KprintQaQuickmenuRepository(db)
+        visitor_n = len(await repo.list_primary_rows(qa_user="visitor"))
+        exhibitor_n = len(await repo.list_primary_rows(qa_user="exhibitor"))
+    return JSONResponse(
+        {
+            "greeting": (
+                "안녕하세요. Test_AI 입니다. 전시회 정보나 참가기업, 제품이 궁금하시면 "
+                "아래에서 주제를 고르거나 직접 질문해 주세요."
+            ),
+            "visitor_primary_count": visitor_n,
+            "exhibitor_primary_count": exhibitor_n,
+            "hubs": [
+                {
+                    "id": "visitor_faq",
+                    "title": "참관객 FAQ",
+                    "subtitle": "자주 묻는 질문을 확인하세요",
+                    "kind": "faq_tree",
+                    "qa_user": "visitor",
+                },
+                {
+                    "id": "exhibitor_faq",
+                    "title": "참가업체 FAQ",
+                    "subtitle": "부스·출입 등 참가사 안내",
+                    "kind": "faq_tree",
+                    "qa_user": "exhibitor",
+                },
+                {
+                    "id": "company_product_rag",
+                    "title": "참가기업/제품 정보",
+                    "subtitle": "저장된 안내와 함께, 검색으로 업체·전시품을 찾을 수 있어요",
+                    "kind": "rag",
+                    "seed_qna_code": "kp_vis_showinfo_003",
+                },
+            ],
+        }
+    )
+
+
 @router.get("/tools/embedding/api/qa-quickmenu/primary", include_in_schema=False)
 async def qa_quickmenu_primary(
     qa_user: str | None = Query(default=None, description="CSV user 열과 동일 (예: visitor)"),
@@ -222,7 +268,10 @@ async def qa_quickmenu_one(
         row = await repo.get_row(qna_code)
         if row is None:
             raise HTTPException(status_code=404, detail=f"unknown qna_code: {qna_code}")
-        return JSONResponse({"item": quickmenu_row_to_dict(row, include_prompt=include_prompt)})
+        item = quickmenu_row_to_dict(row, include_prompt=include_prompt)
+        # follow_question1~4를 실제 row 객체로 해석해 함께 제공 (UI가 라벨/질문을 직접 사용 가능)
+        item["follow_questions_resolved"] = await repo.resolve_follow_question_rows(row)
+        return JSONResponse({"item": item})
 
 
 @router.get("/tools/embedding/api/qa-quickmenu/{qna_code}/follow-links", include_in_schema=False)

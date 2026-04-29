@@ -65,6 +65,20 @@ def _norm_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
 
 
+def normalize_user_query(query: str) -> str:
+    """사용자 원문을 분류/플래너 공통 입력으로 정규화한다.
+
+    정규화 규칙:
+    - 양끝 공백 제거 + 내부 연속 공백 1칸
+    - 스마트쿼트/전각 물음표를 일반 문자로 변환
+    - 제어문자(개행/탭 제외) 제거
+    """
+    q = (query or "").replace("\u2018", "'").replace("\u2019", "'")
+    q = q.replace("\u201c", '"').replace("\u201d", '"').replace("\uff1f", "?")
+    q = "".join(ch for ch in q if (ch >= " " or ch in "\n\t"))
+    return re.sub(r"\s+", " ", q).strip()
+
+
 def detect_language(query: str) -> str:
     text = (query or "").strip()
     kor_count = len(_KOREAN_RE.findall(text))
@@ -355,6 +369,7 @@ __all__ = [
     "_strip_request_scaffolding",
     "_is_informative_query",
     "_dedupe_keep_order",
+    "normalize_user_query",
     "classify_intent_v2",
     "detect_language",
     "build_intent_heuristic_answer",
