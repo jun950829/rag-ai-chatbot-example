@@ -36,6 +36,15 @@ async def generate_search_plan_v2(
         base_queries.append(f"{cleaned} product detail")
         base_queries.append(f"{cleaned} exhibit item info")
 
+    # --- 단계 A-2: 후행 + 검색축이 product일 때 전시품 쪽 쿼리를 추가로 깊게 펼친다 ---
+    # (이유: 단계 A만으로는 회사/제품이 섞여 RRF에서 제품 테이블 신호가 약해질 수 있음)
+    if is_dialog_followup and retrieval_topic == "product":
+        base_queries.append(f"{cleaned} 대표 제품")
+        base_queries.append(f"{cleaned} 주력 제품")
+        base_queries.append(f"{cleaned} 전시품 목록")
+        base_queries.append(f"{cleaned} exhibit item specification")
+        base_queries.append(f"{cleaned} featured product booth")
+
     # --- 단계 B: 검색 축(retrieval_topic)에 따른 확장 — follow-up + 제품 조합에서 핵심 ---
     if retrieval_topic == "company":
         base_queries.append(f"{cleaned} exhibitor")

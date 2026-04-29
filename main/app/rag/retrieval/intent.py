@@ -164,10 +164,13 @@ def _build_intent_meta(
     followup_reason: str = "",
     model: str | None = None,
 ) -> dict[str, Any]:
+    # 비검색 intent(greeting 등)에서도 API·로그 일관성을 위해 topic은 항상 company|product|all 중 하나로 둔다.
     meta: dict[str, Any] = {
         "source": source,
         "is_dialog_followup": bool(is_dialog_followup),
-        "retrieval_topic": _normalize_retrieval_topic(retrieval_topic) if retrieval_topic is not None else None,
+        "retrieval_topic": _normalize_retrieval_topic(
+            retrieval_topic if retrieval_topic is not None else "all"
+        ),
     }
     if followup_reason:
         meta["followup_reason"] = followup_reason
@@ -184,17 +187,33 @@ async def classify_intent_v2(
     model: str = "gpt-4o-mini",
     memory: ConversationMemory | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """--- 전체 흐름: 인사/무관 제외 → 검색축 추정 → 후행 질문 여부 → 라우팅 intent 결정.
+    """이중 축 분류: (축1) 라우팅 intent + (축2) 검색 주제 retrieval_topic.
 
-    반환 dict에는 항상 ``is_dialog_followup``, 검색 경로에서는 ``retrieval_topic``(company|product|all)이 포함된다.
+    **분류 순서와 이유** (먼저 return 하면 아래 단계가 죽으므로 순서가 중요함):
+
+    1. **인사 / 전시 무관** — 벡터 검색을 하지 않으므로 라우팅만 확정하고 종료.
+       이때도 ``retrieval_topic`` 은 로그·API용으로 ``all`` 로 둔다.
+
+    2. **retrieval_topic 키워드 추정** — ``followup`` 여부와 **무관하게** 본문만 본다.
+       그래야 "그럼 그 업체의 대표 제품은?" 처럼 후행이어도 ``topic=product`` 로 잡혀
+       ``entity_scope=product`` · 제품 확장 쿼리가 살아난다. (제품·회사 힌트 동시면 제품 우선)
+
+    3. **is_dialog_followup** — 짧은 질문+히스토리, 대명사, "그럼" 접두, 메모리 엔티티 매칭 등.
+
+    4. **라우팅 intent** — 후행이면 ``followup`` 으로 고정(회사/제품 키워드가 있어도 덮어쓰지 않음).
+       후행이 아니면 키워드가 있으면 ``company`` / ``product`` 직접 라우팅.
+
+    5. **OpenAI 보조** — ``intent=…;topic=…`` 한 줄 + 구형 한 단어 응답 호환.
+
+    반환 meta에는 항상 ``source``, ``is_dialog_followup``, ``retrieval_topic`` 이 포함된다.
     """
     n = _norm_text(message)
 
-    # --- 1단계: 인사 (비검색, topic 없음) ---
+    # --- 1단계: 인사 (비검색) ---
     if _looks_like_greeting(n):
         return "greeting", _build_intent_meta(
             source="heuristic_greeting",
-            retrieval_topic=None,
+            retrieval_topic="all",
             is_dialog_followup=False,
         )
 
@@ -202,17 +221,17 @@ async def classify_intent_v2(
     if any(word in n for word in _NOT_RELATED_HINTS):
         return "not_related", _build_intent_meta(
             source="heuristic_not_related",
-            retrieval_topic=None,
+            retrieval_topic="all",
             is_dialog_followup=False,
         )
 
-    # --- 3단계: 본문 키워드로 검색 축 추정 (후행 여부와 독립) ---
+    # --- 3단계: 본문 키워드로 검색 축 추정 (4단계 followup 판정과 독립 — 핵심) ---
     retrieval_topic = infer_retrieval_topic_from_text(n)
 
     # --- 4단계: 대화상 후행 질문인지 (대명사·짧은 질문·연속어 등) ---
     is_dialog_followup, fu_reason = _is_followup_query(n, has_history=has_history, memory=memory)
 
-    # --- 5단계: 후행이면 라우팅 intent는 followup으로 고정, 검색 축은 3단계 결과를 그대로 사용 ---
+    # --- 5단계: 후행이면 라우팅 intent만 followup; 검색 축은 3단계 값 유지(제품 질문이면 product 유지) ---
     if is_dialog_followup:
         return "followup", _build_intent_meta(
             source=f"heuristic_followup_{fu_reason}",
@@ -257,12 +276,13 @@ async def classify_intent_v2(
             raw_line = ((resp.choices[0].message.content) or "").strip()
             parsed_intent, parsed_topic = _parse_openai_intent_topic_line(raw_line)
             if parsed_intent in INTENT_LABELS:
-                # --- topic 보정: 라우팅이 company/product면 검색축도 동일하게 맞춘다 ---
+                # topic 보정: 명시 topic이 없으면 본문 휴리스틱으로 채움(followup+제품 본문 대비).
                 rt_now = (
                     _normalize_retrieval_topic(parsed_topic)
                     if parsed_topic
                     else infer_retrieval_topic_from_text(n)
                 )
+                # 라우팅이 company/product면 검색축을 그에 맞춤; followup이면 topic은 파싱/휴리스틱 유지.
                 if parsed_intent in {"company", "product"}:
                     rt_now = parsed_intent
                 meta = _build_intent_meta(

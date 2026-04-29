@@ -1,0 +1,719 @@
+qna_code,primary_question,parent_id,depth,quickmenu_label,user,domain,category,subcategory,question_sample,answer_sample,links,utm,follow_question1,follow_question2,follow_question3,follow_question4,follow_question5_formoreinformation,default_quickmenu,default_answer_type,default_answer_prompt,notes
+kp_vis_admin_001,,,,처음으로,,,,,,,,,,,,,,km_vis_admin_001,C,"{km_vis_regist_004} label
+{km_vis_entry_003} label
+{km_vis_trans_004} label
+{km_vis_keynote_001} labell
+{km_vis_showinfo_003} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_001,TRUE,ko2,1,입장료,visitor,참관등록,참관비용,등록 기간별 참관비용,언제까지 무료 등록이에요?,"2026년 2월 28일까지 등록시 무료 입장
+2026년 3월 1일부터 3월 18일까지 등록 시 입장료 10,000원 발생
+2026년 3월 19일부터 22일까지 등록 시 입장료 20,000원 발생합니다",,,km_vis_regist_003,km_vis_invitation_001,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_002,,,,-,visitor,참관등록,,,지금 등록하면 얼마에요?,"2026년 2월 28일까지 등록시 무료 입장
+2026년 3월 1일부터 3월 18일까지 등록 시 입장료 10,000원 발생
+2026년 3월 19일부터 22일까지 등록 시 입장료 20,000원 발생합니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_003,,ko2,2,출입증 결제,visitor,참관등록,,,출입증 결제는 어떻게 하면돼요?,현장에서 출입증 발급 받을 때 카드결제 가능하며 현금 결제 시 유인등록대를 찾아주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_004,TRUE,ko1,1,참관등록,visitor,참관등록,참관등록 방법,,참관등록은 어떻게 하나요?,전시회 홈페이지 통해서 인적사항 및 설문조사 기재 후 신청해주시면 됩니다,https://kimes.kr/ko/visitor/pre-registration/step1,?utm_source=bot&utm_medium=button&utm_campaign=c6jnf2_46030_register,km_vis_regist_006,km_vis_regist_007,km_vis_regist_009,km_vis_regist_012,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_005,,,,지난 정보 불러오기,visitor,참관등록,,,지난 정보 불러오기는 어떻게 할 수 있나요?,참관등록 페이지 내 지난 정보 불러오기를 통해 데이터를 불러오면 더욱 빠르게 등록 가능합니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_006,,ko1,2,현장등록,visitor,참관등록,,,현장 등록은 어떻게 하나요?,현장에 방문하여 모바일 홈페이지를 통해 인적사항 및 설문조사 기재 후 신청해주시면 됩니다,,,km_vis_regist_011,km_vis_regist_015,km_vis_regist_016,km_vis_regist_017,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_007,,ko1,2,단체등록,visitor,참관등록,단체등록,,단체로 방문하려면 어떻게 하나요?,개인정보처리방침에 의해 단체등록은 더이상 받지 않고 있습니다. 개별 등록 부탁드립니다,,,km_vis_regist_011,km_vis_regist_015,km_vis_regist_016,km_vis_regist_017,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_008,,,,-,visitor,참관등록,,,단체도 유료인가요?,"등록 기간별 참관비용과 동일하게 적용 받습니다 
+2026년 2월 28일까지 등록시 무료 입장
+2026년 3월 1일부터 3월 18일까지 등록 시 입장료 10,000원 발생
+2026년 3월 19일부터 22일까지 등록 시 입장료 20,000원 발생합니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_009,,ko1,2,출입 QR코드,visitor,참관등록,QR코드 확인,,QR코드는 어디서 확인 가능해요?,"입력해주신 이메일과 연락처의 카카오톡으로 보내드립니다.
+못받아보신 경우, KIMES 앱에 로그인 하시면 확인하실 수 있습니다",,,km_vis_regist_011,km_vis_regist_015,km_vis_regist_016,km_vis_regist_017,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_010,,,,-,visitor,참관등록,,,QR코드를 못받아봤어요,"못받아보신 경우, KIMES 앱에 로그인 하시면 확인하실 수 있습니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_011,,ko1,3,아이디 찾기,visitor,참관등록,로그인,,아이디를 까먹어서 찾고 싶어요,아이디 찾기는 사무국으로 문의해주세요,,,,km_vis_regist_015,km_vis_regist_016,km_vis_regist_017,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_012,,ko1,2,비밀번호 찾기,visitor,참관등록,,,비밀번호를 까먹어서 찾고 싶어요,"비밀번호 찾기는 홈페이지 내 비밀번호 찾기 버튼으로 가능합니다 
+기존에 등록해주신 아이디와 이름을 입력하시면 이메일로 임시비밀번호 메일이 발송됩니다",https://kimes.kr/ko/auth/login/visitor,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,km_vis_regist_011,km_vis_regist_015,km_vis_regist_016,km_vis_regist_017,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_013,,,,-,visitor,참관등록,,,비밀번호 변경해주세요,개인정보처리방침에 의해 사무국에서 패스워드를 변경해드릴 수 없습니다.,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_014,,,,-,visitor,참관등록,,,아이디에 오타를 냈어요,아이디 변경은 불가능하며 사무국으로 문의 주시면 기존 아이디 탈퇴처리 후 다시 등록 안내드리겠습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_015,,ko1,3,아이디 변경,visitor,참관등록,,,아이디를 변경하고 싶어요,아이디 변경은 불가능하며 새로운 아이디로 다시 등록 부탁드립니다,,,km_vis_regist_011,,km_vis_regist_016,km_vis_regist_017,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_016,,ko1,3,비밀번호 변경,visitor,참관등록,,,비밀번호를 변경하고 싶어요,홈페이지 내 로그인 후 마이페이지에서 패스워드 변경 가능합니다,https://kimes.kr/ko/auth/login/visitor,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,km_vis_regist_011,km_vis_regist_015,,km_vis_regist_017,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_regist_017,,ko1,3,참관예상날짜,,참관등록,참관예상날짜,,참관예상날짜가 변경되도 괜찮나요?,수요를 위해 파악하는 내용으로 선택해주신 날짜 외에 방문해주셔도 됩니다 수정은 마이페이지에서 가능합니다,,,km_vis_regist_011,km_vis_regist_015,km_vis_regist_016,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_invitation_001,,ko2,2,초청장,visitor,초청장,지류 초청장,사용방법,종이 초청장은 어떻게 사용할 수 있나요?,"현장 등록대에서 결제가 필요하신 경우, 종이 초청장을 제시하시면 무료로 입장 가능합니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_invitation_003,,,,-,visitor,초청장,모바일 초청장,,모바일 초청장은 없나요?,"종이 초청장을 대체하는 모바일 초청장은 존재하지 않습니다 
+무료 기간 내 홈페이지 통하여 등록바랍니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_001,,ko3,2,수령 위치,visitor,입장,출입증,,출입증은 어디서 수령 가능한가요?,전시회 각 홀 출입구에서 수령 가능합니다,,,km_vis_entry_006,km_vis_entry_015,km_vis_event_001,km_vis_event_005,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_002,,,,-,visitor,입장,,,출입증은 언제부터 수령 가능한가요?,9시 30분부터 수령 가능합니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_003,TRUE,ko3,1,출입증 수령,visitor,입장,,,출입증은 어떻게 수령 하나요?,등록대에서 받아보신 QR코드를 보여주시면 출입증으로 교환해드립니다,,,km_vis_entry_001,km_vis_entry_014,km_vis_entry_016,km_vis_entry_019,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_005,,,,-,visitor,입장,미성년자,,미성년자 입장 가능한가요?,"B2B 전문 전시회이다보니 미성년자 입장을 제한하고 있습니다. 
+다만 부모님 또는 보호자 동반할 경우 입장 가능합니다. 
+상담 분위기 확보를 위해 교복 착용은 자제 부탁드립니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_006,,ko3,3,입장 마감,visitor,입장,입장 마감,,입장은 언제까지 가능한가요?,"전시회 종료 30분 전에 입장이 마감되오니, 시간 여유를 두시고 방문해주세요",,,,km_vis_entry_015,km_vis_event_001,km_vis_event_005,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_007,,,,-,visitor,입장,애견 동반,,애견 동반 가능한가요?,B2B 전문 전시회이다보니 애견 동반을 제한하고 있습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_009,,,,-,visitor,입장,무료입장 대상,,군인은 무료 입장 또는 할인 가능한가요?,네 무료 입장 가능합니다. 현장 유인 등록대에서 등록해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_010,,,,-,visitor,입장,,,경찰은 무료 입장 또는 할인 가능한가요?,네 무료 입장 가능합니다. 현장 유인 등록대에서 등록해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_011,,,,-,visitor,입장,,,장애인은 무료 입장 또는 할인 가능한가요?,네 무료 입장 가능합니다. 현장 유인 등록대에서 등록해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_012,,,,-,visitor,입장,,,60세 이상 무료 입장 또는 할인 가능한가요?,불가능합니다. 현장 등록대를 이용해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_013,,,,-,visitor,입장,,,국가유공자 무료 입장 또는 할인 가능한가요?,불가능합니다. 현장 등록대를 이용해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_014,,ko3,2,재입장,visitor,입장,재입장,,전시회 참관 후 잠시 나갔다가 다시 들어와도 되나요?,출입증 소지 시 재입장 가능합니다. 항상 패용하여 주세요,,,km_vis_entry_006,km_vis_entry_015,km_vis_event_001,km_vis_event_005,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_015,,ko3,3,재방문,visitor,입장,,,하나의 출입증으로 다른 날에 와도 되나요?,다른 날짜에 방문하시는 경우 정보 조회를 통해 새롭게 출입증 발급받으신 후 입장 가능합니다.,,,km_vis_entry_006,,km_vis_event_001,km_vis_event_005,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_016,,ko3,2,-,visitor,입장,참관확인서,,회사 제출을 위해 참관확인서가 필요합니다,"전시회 종료 후 출입 여부 조회 후 발급 가능합니다.
+info@eandex.co.kr로 소속/이름/직함/주소를 보내주세요",,,km_vis_entry_006,km_vis_entry_015,km_vis_event_001,km_vis_event_005,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_017,,,,-,visitor,입장,,,부대 제출을 위해 참관확인서가 필요합니다,"전시회 종료 후 출입 여부 조회 후 발급 가능합니다.
+info@eandex.co.kr로 소속/이름/직함/주소를 보내주세요",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_018,,,,-,visitor,입장,,,기관 제출을 위해 참관확인서가 필요합니다,"전시회 종료 후 출입 여부 조회 후 발급 가능합니다.
+info@eandex.co.kr로 소속/이름/직함/주소를 보내주세요",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_019,,ko3,2,참관확인서,visitor,입장,,,전시회를 보러 왔다는 증명 서류가 필요합니다,"전시회 종료 후 출입 여부 조회 후 발급 가능합니다.
+info@eandex.co.kr로 소속/이름/직함/주소를 보내주세요",,,km_vis_entry_006,km_vis_entry_015,km_vis_event_001,km_vis_event_005,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_entry_020,,,,입장시간,,입장,,,전시회 몇시부터 몇시까지인가요?,"오전 10시에서 오후 6시까지이며 3월 22일(일)은 오후 5시 마감입니다.
+마감 30분전까지만 입장가능하여 이 점 참고 부탁드립니다.",,,,,,,,,,,
+kp_vis_event_001,,ko3,3,경품이벤트,visitor,이벤트,경품 이벤트,,경품이벤트 위치가 어디인가요?,3층 D홀 내부/E홀 옆 이벤트관에서 진행하고 있습니다,,,km_vis_entry_006,km_vis_entry_015,km_vis_event_002,km_vis_event_005,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_002,,ko3,4,-,visitor,이벤트,,,경품 종류는 어떻게 되나요?,"순금1돈, 에어팟, 백화점상품권, 스타벅스 카드, KIMES 기념품이 준비되어 있습니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_003,,,,-,visitor,이벤트,,,참가업체도 참가 가능한가요?,참관객 대상으로 진행되는 이벤트라서 불가능합니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_004,,,,-,visitor,이벤트,,,중복해서 참가할 수 있나요?,1인당 각 홀에서 하루에 한 번씩 참여 가능합니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_005,,ko3,3,걷기 이벤트,visitor,이벤트,만보기 이벤트,,걷기이벤트는 어떻게 참가할 수 있나요?,"KIMES 앱을 설치하시고, 걷기 이벤트 페이지에 진입하여 활성화해주세요",,,km_vis_showinfo_001,km_vis_entry_006,km_vis_entry_015,km_vis_event_001,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_006,,,,-,visitor,이벤트,,,리워드를 받지 못했는데 초기화 되었습니다,공지드린 안내대로 매일 00시 기준 초기화 됩니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_007,,,,-,visitor,이벤트,,,캡쳐한 내용으로는 못 받나요?,어플 내에서 리워드 수령하신 분 대상으로 추첨합니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_008,,,,-,visitor,이벤트,,,스마트폰 단말기 걸음과 KIMES APP 내 걸음이 다릅니다,"기기 사용 상태와 스마트워치 사용여부 등 실제와 다를 수 있습니다.
+이벤트 페이지 내 조치사항을 실행해주세요",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_009,,,,-,visitor,이벤트,,,만보기 이벤트에 접속이 되지 않습니다,설정 내 권한이 이벤트 참여가 가능한지 확인해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_010,,,,-,visitor,이벤트,,,참가업체도 참가 가능한가요?,참관객 대상으로 진행되는 이벤트라서 불가능합니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_011,,,,-,visitor,이벤트,도슨트 투어,,전시장을 순회하는 도슨트 투어가 있나요?,"별도로 운영되는 도슨트투어는 없습니다 
+KIMES 앱을 설치하시고 관심기업 및 제품을 등록하셔서 전시회를 즐겨보세요!",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_event_012,,,-,-,visitor,이벤트,,,경품은 언제 받을 수 있나요?,전시회 종료 후 2-3주 이내 추첨을 통해 문자로 안내드릴 예정입니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_001,,ko4,2,혼잡도 확인,visitor,오시는 길,주차,주차 장소,주차장 혼잡도를 확인하고 싶어요,코엑스에서 제공하는 혼잡도 정보를 확인하세요,https://www.coex.co.kr/guide/parking-information/infomation/,,km_vis_trans_011,km_vis_trans_017,km_vis_trans_018,km_vis_trans_019,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_002,,,,-,visitor,오시는 길,,,정확하게 코엑스 주차장의 어느 입구로 가야하나요?,코엑스 지하주차장은 연결되어 있으므로 어느 입구로 들어오셔도 관계없습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_003,,,,-,visitor,오시는 길,,,전시회장과 가장 가까운 주차장이 어디인가요?,코엑스 지하주차장 퍼플 또는 블루 주차장에 주차해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_004,TRUE,ko4,1,주차,visitor,오시는 길,,주차비용,주차 비용이 어떻게 되나요?,"승용차: 15분마다 1,500원, 일일 주차 60,000원
+화물차(2.5t 이상 승용차): 15분마다 3,000원, 일일 주차 120,000원
+대형버스: 주차장 이용불가",,,km_vis_trans_001,km_vis_trans_010,km_vis_trans_013,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_005,,,,-,visitor,오시는 길,,,무료 출차시간이 있나요?,Grace Time: 입차 후 20분 이내 출차 차량 주차료 면제됩니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_007,,,,-,visitor,오시는 길,,주차할인,전시회 참관객 대상 주차할인이 있나요?,"전시장 각 홀 입구에 있는 카카오T 배너 QR 스캔 후 차량번호 기입하면 일일주차 60,000원에서 30,000원으로 할인 가능합니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_008,,,,-,visitor,오시는 길,,,"장애인, 국가유공자 할인이 있나요?","장애인, 국가유공자는 주차요금 50% 할인됩니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_009,,,,-,visitor,오시는 길,,,"카카오T 주차로 모바일 결제 시, 할인 가능한가요?","1시간 4,800원으로 이용가능합니다.(개인카드만 가능)",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_010,,ko4,2,할인정보,visitor,오시는 길,,,전시회 참관객 대상 무료 주차 제공이 있나요?,"별도로 제공되는 내용은 없습니다 
+전시장 각 홀 입구에 있는 카카오T 배너 QR 스캔 후 차량번호 기입하면 일일주차 60,000원에서 30,000원으로 할인 가능합니다",,,km_vis_trans_011,km_vis_trans_017,km_vis_trans_018,km_vis_trans_019,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_011,,ko4,3,전기차 주차,visitor,오시는 길,,전기차 주차,전기차 주차가 가능한가요?,코엑스 지하3층 라이브존 주차장과 옥상 주차장에서 가능합니다,,,,km_vis_trans_017,km_vis_trans_018,km_vis_trans_019,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_012,,,,-,visitor,오시는 길,,주차고객 서비스센터,주차고객 서비스센터 위치는 어디인가요?,1F 코엑스 동문 방향에서 데블스도어 매장 뒤편입니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_013,,ko4,2,주차 고객센터,visitor,오시는 길,,,주차고객 서비스센터 연락처는 어떻게 되나요?,02-6002-7130입니다(운영시간 : 9:00 ~ 19:00 (주말 및 공휴일 10:00 ~ 19:00)),,,km_vis_trans_011,km_vis_trans_017,km_vis_trans_018,km_vis_trans_019,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_014,,,,-,visitor,오시는 길,,주차고객 현장지원실,주차고객 현장지원실 위치는 어디인가요?,지하 2층 44N 구역입니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_015,,,,-,visitor,오시는 길,,,주차고객 현장지원실 연락처는 어떻게 되나요?,02-6000-7514입니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_016,,,,-,visitor,오시는 길,셔틀버스,,셔틀버스는 운영 되나요?,별도로 운영되는 내용은 없습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_017,,ko4,3,2호선,visitor,오시는 길,대중교통,지하철,2호선 타고 방문해요,"삼성역 5, 6번 출구와 직접 연결된 통로로 진입, 밀레니엄 광장을 통하여 스타필드 코엑스몰로 진입하시면 됩니다",,,km_vis_trans_011,,km_vis_trans_018,km_vis_trans_019,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_018,,ko4,3,9호선,visitor,오시는 길,대중교통,지하철,9호선 타고 방문해요,"봉은사역 7번출구 직접 연결된 통로로 진입, 아셈플라자를 통하여 스타필드 코엑스몰로 진입하시면 됩니다",,,km_vis_trans_011,km_vis_trans_017,,km_vis_trans_019,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_trans_019,,ko4,3,버스,visitor,오시는 길,,버스,버스타면 어디에서 내려야하나요?,코엑스 인근 버스정류장에서 하차 후 방문해주시면 됩니다. 자세한 내용은 링크 참고 부탁드립니다 ,https://kimes.kr/ko/about/transportation?tab=bus-use,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,km_vis_trans_011,km_vis_trans_017,km_vis_trans_018,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_001,TRUE,ko7,1,세미나,visitor,세미나,신청문의,의료산업 세미나,어떤 세미나가 있나요?,의료산업 세미나 리스트는 링크에서 확인 가능합니다.,https://www.kimes.kr/ko/conference/medical-industry-seminar,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,km_vis_seminar_010,km_vis_seminar_013,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_002,,,,-,visitor,세미나,,,신청이 불가능한 세미나는 마감된건가요?,"KIMES 홈페이지 통해서 받는 세미나는 마감으로 처리되지 않았다면 신청 가능합니다. 단, 각 주관사에서 직접 받고 있는 세미나는 주관사로 직접 문의해주셔야 합니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_003,,,,-,visitor,세미나,,,주관사에는 어떻게 문의할 수 있나요?,홈페이지 내 각 세미나별로 문의처를 기재해두었습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_004,,,,-,visitor,세미나,,,모집버튼이 없는 세미나는 어떻게 신청이 가능한가요?,일부 세미나는 비공개로 진행되어 신청이 불가능할 수 있습니다. 주관사로 문의해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_005,,,,-,visitor,세미나,,의료인 전문컨퍼런스,어떤 컨퍼런스가 있나요?,의료인 전문 컨퍼런스 리스트는 링크에서 확인 가능합니다.,https://www.kimes.kr/ko/conference/medical-professionals-conference,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_006,,,,-,visitor,세미나,,,일반 참관객도 신청 가능한가요?,의료인 대상 보수교육은 일반 참관객 신청 불가능 할 수 있습니다.,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_007,,,,-,visitor,세미나,공통 문의,취소문의,신청한 세미나를 취소하고 싶어요,"참관객 로그인 후 [마이페이지] - [세미나 신청 내역] 에서 신청한 세미나 조회 후 취소 가능합니다.
+KIMES 홈페이지가 아닌 구글폼 등, 세미나 주관사 별도의 페이지에서 신청한 경우 해당 주관사로 연락해야합니다.
+세미나 주관사 문의처는 세미나 안내 페이지에서 확인 가능합니다.",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_008,,ko7,3,온라인 송출,visitor,세미나,,온라인 송출 여부,온라인으로 세미나를 볼 수 있나요?,"기본적으로 온라인 송출하지 않으나 각 세미나 별로  운영 방식이 상이할 수 있어
+각 세미나별 주관사로 문의 부탁드립니다.
+세미나 주관사 문의처는 세미나 안내 페이지에서 확인 가능합니다.",,,,km_vis_seminar_009,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_009,,ko7,3,발표자료,visitor,세미나,,발표 자료 제공 여부,발표자료를 따로 받아볼 수 있나요?,"세미나별로 운영방식이 상이할 수 있어 세미나 주관사로 문의 부탁드립니다.
+세미나 주관사 문의처는 세미나 안내 페이지에서 확인 가능합니다.",,,km_vis_seminar_008,,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_010,,ko7,2,현장 신청,visitor,세미나,,현장 신청 문의,현장에서도 들을 수 있나요?,"세미나별로 운영방식이 상이할 수 있어 세미나 주관사로 문의 부탁드립니다.
+세미나 주관사 문의처는 세미나 안내 페이지에서 확인 가능합니다.",,,km_vis_seminar_008,km_vis_seminar_009,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_011,,,,-,visitor,세미나,,세미나 신청 후 전시회 입장 문의,세미나를 신청하면 전시회도 참관 가능한가요?,KIMES 홈페이지에서 참관등록한 경우 1층 출입증 발급대에서 출입증 발급 후 전시회 입장이 가능합니다.,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_012,,,,-,visitor,세미나,,신청 내역 확인,신청한 내역은 어디서 확인 가능한가요?,"참관객 로그인 후 [마이페이지] - [세미나 신청 내역] 에서 신청한 세미나 조회가 가능합니다.
+KIMES 홈페이지가 아닌 구글폼 등, 세미나 주관사 별도의 페이지에서 신청한 경우 해당 주관사로 연락해야합니다.",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_seminar_013,,ko7,2,마감된 세미나,visitor,세미나,,마감 세미나,마감된 세미나는 들을 수 없나요?,"세미나별로 운영방식이 상이할 수 있어 세미나 주관사로 문의 부탁드립니다.
+세미나 주관사 문의처는 세미나 안내 페이지에서 확인 가능합니다.",,,km_vis_seminar_008,km_vis_seminar_009,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_001,TRUE,ko5,1,키노트,visitor,키노트,,장소,키노트는 어디서 진행되나요?,코엑스 4층 컨퍼런스룸 401호에서 진행됩니다,,,km_vis_keynote_004,km_vis_keynote_005,km_vis_keynote_009,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_002,,,,-,visitor,키노트,,시간,키노트는 언제 진행되나요?,"전시회 첫날, 3월 19일 오후에 진행됩니다",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_003,,,,-,visitor,키노트,,온라인 송출 여부,온라인으로 키노트를 볼 수 있나요?,별도의 온라인 송출은 진행하지 않을 예정입니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_004,,ko5,2,신청 방법,visitor,키노트,,신청 문의,신청은 어떻게 할 수 있나요?,"KIMES 2026 전시회 참관등록 후, 홈페이지에서 신청 가능합니다",링크 나중에 추가,,km_vis_keynote_007,km_vis_keynote_008,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_005,,ko5,2,취소 문의,visitor,키노트,,취소 문의,신청한 내역을 취소하고 싶어요,"KIMES 사무국으로 문의 부탁드립니다.
+kimes@kimes.kr | 02-551-0102",,,km_vis_keynote_007,km_vis_keynote_008,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_006,,,,-,visitor,키노트,,,신청한 내역에서 부분취소하고 싶어요,"KIMES 사무국으로 문의 부탁드립니다.
+kimes@kimes.kr | 02-551-0102",,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_007,,ko5,3,재결제,visitor,키노트,,,키노트를 취소하고 다시 결제하고 싶습니다,"KIMES 사무국으로 문의 부탁드립니다.
+kimes@kimes.kr | 02-551-0102",,,,km_vis_keynote_008,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_008,,ko5,3,결제 내역,visitor,키노트,,결제 내역,키노트 결제한 내역은 어디서 확인할 수 있나요?,참관객 로그인 후 [마이페이지] - [세미나 신청 내역] 에서 조회가 가능합니다.,,,km_vis_keynote_007,,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_009,,ko5,2,결제 방법,visitor,키노트,,결제 문의,카드로 결제 가능한가요?,네 홈페이지에서 신청을 통해 카드결제가 가능합니다,,,km_vis_keynote_007,km_vis_keynote_008,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_010,,,,-,visitor,키노트,,,"현금, 계좌이체로 결제가능한가요?",아니요 불가능합니다 홈페이지에서 카드결제 해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_011,,,,-,visitor,키노트,,발표 자료 제공 여부,발표자료를 따로 받아볼 수 있나요?,발표자료는 제공되지 않습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_keynote_012,,,,-,visitor,키노트,,주차권 문의,키노트에 참가하면 주차권이 제공되나요?,주차권은 제공되지 않습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_001,,,3,KIMES 어플,visitor,행사정보,KIMES APP,KIMES APP,KIMES 앱은 어디서 다운로드 받나요?,구글플레이스토오 또는 앱스토어에 KIMES 2026을 검색해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_002,,ko6,2,디렉토리북,visitor,행사정보,참관객 행동,디렉토리,참가업체 정보가 있는 디렉토리 북은 없나요?,"ESG의 일환으로 종이 디렉토리북은 더이상 제공되지 않습니다.
+홈페이지 참가업체 검색 메뉴에서 확인 해주세요",https://kimes.kr/ko/visitor/exhibitor-search,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,km_vis_showinfo_007,,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_003,TRUE,ko6,1,참가업체 검색,visitor,행사정보,참관객 행동,참가업체 검색,어떤 참가기업이 전시회에 있나요?,KIMES 홈페이지 내 참가업체 검색 메뉴에서 확인 가능합니다,https://kimes.kr/ko/visitor/exhibitor-search,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,km_vis_showinfo_002,km_vis_showinfo_007,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_004,,,,-,visitor,행사정보,참관객 행동,전시장 도면 검색,전시장 도면은 어디서 확인할 수 있나요?,KIMES 홈페이지 내 전시장 도면 검색 메뉴에서 확인 가능합니다,https://kimes.kr/ko/visitor/floor-plan,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_005,,,,-,visitor,행사정보,참관객 행동,전시품목 검색,특정 전시품목을 찾고 있어요,"KIMES 홈페이지 [참관객] - [전시품 검색] 메뉴에서 조회 가능
+홈페이지에 기재되어 있는 품목만 전시되는 건 아니라서
+찾는 제품의 관련 업체가 있는 경우 업체로 문의해주세요",https://kimes.kr/ko/visitor/product-search,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_006,,,,-,visitor,행사정보,참관객 행동,,이런 전시품이 있나요?,"KIMES 홈페이지 [참관객] - [전시품 검색] 메뉴에서 조회 가능
+홈페이지에 기재되어 있는 품목만 전시되는 건 아니라서
+찾는 제품의 관련 업체가 있는 경우 업체로 문의해주세요",https://kimes.kr/ko/visitor/product-search,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_007,,ko6,2,관심기업등록,visitor,행사정보,참관객 행동,관심기업제품,관심기업은 어떻게 등록하나요?,참가업체 검색 페이지에서 관심기업에 하트 표시를 눌러주세요,,,km_vis_showinfo_002,,,,,km_vis_admin_001,A,"{follow_question1} label
+{follow_question2} label
+{follow_question3} label
+{follow_question4} label
+{follow_question5} label
+{default_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_008,,,,-,visitor,행사정보,참관객 행동,,관심기업은 어디서 확인하나요?,KIMES 홈페이지에 로그인 후 관심기업 및 제품에서 확인 가능합니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_009,,,,-,visitor,행사정보,참관객 행동,,관심제품은 어떻게 등록하나요?,전시품목 검색 페이지에서 관심기업에 하트 표시를 눌러주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_010,,,,-,visitor,행사정보,참관객 행동,,관심제품은 어디서 확인하나요?,KIMES 홈페이지에 로그인 후 관심기업 및 제품에서 확인 가능합니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_011,,,,-,visitor,행사정보,참관객 행동,,메모 기능은 어떻게 활용하나요?,KIMES 홈페이지에서 관심기업에 방문 전 또는 후에 메모를 남겨서 전시회의 각 부스를 정리하세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_012,,,,-,visitor,행사정보,동시개최행사,INSPIRE - Digital Health,INSPIRE - Digital Health 특별관은 어떤 행사인가요?,"INSPIRE 특별관은 헬스케어 혁신이 융합되는 공간으로서 의료 AI, 디지털헬스케어, 웨어러블, 데이터 분석 등 첨단 솔루션을 한 자리에서 볼 수 있습니다.
+장소 : 코엑스 1층 그랜드볼룸
+자세한 내용은 링크에서 확인 가능합니다",https://kimes.kr/ko/concurrent-events/detail/4,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_013,,,,-,visitor,행사정보,동시개최행사,BEAUTY & DERMA SEOUL,BEAUTY & DERMA SEOUL 특별관은 어떤 행사인가요?,"피부 관리 기기부터 스킨케어, 필러, 레이저 장비 등 글로벌 뷰티 시장에서 급성장하고 있는 한국 피부 미용 분야의 경쟁력을 BEAUTY&DERMA 특별관에서 확인하세요!
+장소 : 코엑스 3층 E홀과 1층 A홀 로비
+자세한 내용은 링크에서 확인 가능합니다",https://kimes.kr/ko/concurrent-events/detail/10,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_014,,,,-,visitor,행사정보,동시개최행사,Medicomtek,Medicomtek 특별관은 어떤 행사인가요?,"의료 산업에서 사용하는 의료기기 분야는 기존의 의료기기 이외에 인공지능을 비롯한 딥러닝, 로봇 과학 분야까지 기술 개발의 폭이 넓어지고 있습니다.
+장소 : 코엑스 3층 D홀
+자세한 내용은 링크에서 확인 가능합니다",https://kimes.kr/ko/concurrent-events/detail/8,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_015,,,,-,visitor,행사정보,동시개최행사,GMEP 수출상담회,GMEP 수출상담회는 어떤 행사인가요?,"의료기기 분야 1:1 비즈니스 상담회와 더불어 계약 체결식, 혁신 의료기기 쇼케이스, K-바이오데스크 수출 애로 컨설팅을 진행하고, 글로벌 오픈 이노베이션 파트너십을 통해 글로벌기업 협력 수요를 공유하는 자리를 마련합니다
+장소 : 코엑스 2층 더플라츠홀
+자세한 내용은 링크에서 확인 가능합니다",https://kimes.kr/ko/concurrent-events/detail/2,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_016,,,,-,visitor,행사정보,동시개최행사,MedTech Innovator,MedTech Innovator는 어떤 행사인가요?,"한국의 메드텍 산업은 혁신적인 K-Medtech 솔루션에 대한 글로벌 수요 확대와 함께 국제 시장에서 빠르게 주목받고 있습니다. 이에 한국보건산업진흥원은 MedTech Innovator Asia Pacific과 협력하여, 한국 의료기기 및 디지털헬스 기업들이 글로벌 파트너와 연결되고 성장 잠재력을 효과적으로 선보일 수 있도록 MedTech Spotlight: New Impact Korea 2026을 오는 3월 한국(서울)에서 개최합니다.
+장소 : 코엑스 / 소노펠리체 컨벤션
+자세한 내용은 링크에서 확인 가능합니다",https://kimes.kr/ko/concurrent-events/detail/9,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_017,,,,-,visitor,행사정보,동시개최행사,EU Business HUB,EU Business HUB는 어떤 행사인가요?,"헬스케어·의료기기 분야 유럽 중소기업 및 스타트업 약 50개사 공동관을 운영합니다
+장소 : 코엑스3층 D홀
+자세한 내용은 링크에서 확인 가능합니다",https://kimes.kr/ko/concurrent-events/detail/11,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_018,,,,-,visitor,행사정보,동시개최행사,Medical Korea,Medical Korea는 어떤 행사인가요?,"글로벌 오피니언 리더들과 함께하는 콘퍼런스, 외국인환자 유치 및 의료 해외진출을 위한 비즈니스 미팅, Medical Korea 전시홍보관, 의료기관 팸투어 등 다양한 프로그램을 통해 폭넓은 정보와 실질적인 네트워킹 기회를 제공합니다.
+장소 : 코엑스 아셈볼룸, 그랜드볼룸
+자세한 내용은 링크에서 확인 가능합니다",https://kimes.kr/ko/concurrent-events/detail/6,?utm_source=bot&utm_medium=button&utm_campaign=w4sj3b_46030_general,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_019,,,,-,visitor,행사정보,편의시설,의무실,코엑스에 의무실이 어디있나요?,"코엑스 1층 서문 앞에 위치하고 있습니다 
+자세한 위치는 링크를 참고해주세요",https://www.coex.co.kr/guide/amenities/#;,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels}
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_020,,,,-,visitor,행사정보,편의시설,휠체어,휠체어를 대여할 수 있는 곳이 있나요?,"코엑스 1층 서문과 동문 앞에 위치하고 있습니다
+자세한 위치는 링크를 참고해주세요",https://www.coex.co.kr/guide/amenities/#;,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_021,,,,-,visitor,행사정보,편의시설,물품보관소,,"코엑스 1층 신한은행 옆, B홀 안내데스크 옆 에스컬레이터에 위치하고 있습니다
+자세한 위치는 링크를 참고해주세요",https://www.coex.co.kr/guide/amenities/#;,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_022,,,,-,visitor,행사정보,편의시설,식당,근처에 식사할만한 곳이 있나요?,A홀과 B홀 입구 앞에 있는 에스컬레이터를 이용하여 지하 코엑스몰로 이동하실 수 있습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_023,,,,-,visitor,행사정보,편의시설,카페,근처에 커피마실만한 곳이 있나요?,A홀과 B홀 입구 앞에 있는 에스컬레이터를 이용하여 지하 코엑스몰로 이동하실 수 있습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_024,,,,-,visitor,행사정보,편의시설,추천 식당/카페,KIMES에서 추천해줄만한 식당이나 카페가 있나요?,현재 서비스 준비중입니다 빠른 시일 내에 안내드리겠습니다,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_vis_showinfo_025,,,,-,visitor,행사정보,편의시설,기자실,KIMES 기자실이 준비되어 있나요?,코엑스 3층 컨퍼런스룸에 운영 예정입니다. 자세한 내용은 사무국에 문의해주세요,,,,,,,,km_vis_admin_001,B,"{suggest 5 related questions that they have labels} + {defalut_quickmenu} label
+퀵메뉴 외에 궁금하신 내용을 직접 질문해주셔도 됩니다",
+kp_ex_entrance_001,TRUE,,,,exhibitor,출입가능시간,준비기간,반입일정,참가업체 반입일정이 어떻게 되나요?,"각 전시장별로 공사, 준비, 출입, 철거시간이 상이하오니 링크를 참고해주세요",https://eandex.co.kr/kimesmanual_112,,,,,,,,,,
+kp_ex_entrance_002,,,,,exhibitor,출입가능시간,준비기간,하역장 위치,하역장(로딩덕)은 어떻게 찾아가나요?,"하역장 진입은 코엑스 서문 GATE를 통해서 가능하며 각 홀별 자세한 동선 안내는
+하단 링크에서 좌측의 메뉴 버튼 - 화물 경로를 통해서 확인하실 수 있습니다.",https://coex.xrspace.co.kr/,,,,,,,,,,
+kp_ex_entrance_003,,,,,exhibitor,출입가능시간,준비기간,화물 무료주차,화물차량은 무료 주차 가능한가요?,"1톤 이상 화물차량(트럭) 및 승합차(차량번호 앞자리 7,8,9)만 입차 가능하며 출차하실 때 전시장 출구에서 경비원에게 작업차량 QR등록을 안내받아야 합니다.
+
+1일 1회 3시간 동안 무료로 이용하실 수 있습니다. ",,,,,,,,,,,
+kp_ex_entrance_004,,,,,exhibitor,출입가능시간,준비기간,화물차량 무료 QR코드,화물 주차장에 3시간 무료 QR코드는 어디있나요?,"코엑스 주차 시스템 개편으로 일반 차량에 대한 QR코드 무료 3시간 주차등록은 없어졌습니다.
+
+1톤 이상 화물차량(트럭) 및 승합차(차량번호 앞자리 7,8,9)의 경우 입차 후 출차할 때 전시장 출구에서 경비원에게 작업차량 QR등록을 안내받아야 합니다.",,,,,,,,,,,
+kp_ex_entrance_005,,,,,exhibitor,출입가능시간,준비기간,지하주차장 차량 높이 제한,지하주차장에 트럭이 들어갈 수 있나요?,지하주차장 출입 가능 최대 높이는 2.2m입니다.,,,,,,,,,,,
+kp_ex_entrance_006,,,,,exhibitor,출입가능시간,준비기간,전시장 차량 높이 제한,전시장에 차량 높이제한이 어떻게 되나요?,"짐을 상차하였을 때 아래 높이 이하여야 합니다.
+
+1층 전시장(A,B홀) 진입 제한 높이 4M",,,,,,,,,,,
+kp_ex_entrance_007,,,,,exhibitor,출입가능시간,준비기간,전시장 차량 중량제한,전시장에 차량 중량제한이 어떻게 되나요?,"전시장 내부는 4.5ton, 하역장은 8ton까지입니다",,,,,,,,,,,
+kp_ex_entrance_008,,,,,exhibitor,출입가능시간,준비기간,화물차 무료 주차 QR위치,화물차 무료주차 QR위치는 어디있나요?,하역장 출입구 쪽에 있으며 자세한 위치는 하역장 경비원에게 문의바랍니다.,,,,,,,,,,,
+kp_ex_entrance_009,,,,,exhibitor,출입가능시간,준비기간,차량 퇴장 시간,전시장 내부에 차량은 언제까지 이동해야하나요?,"전시장 내 차량은 공사 마지막날(3/18) 16:00까지 모두 퇴장하여야합니다.
+전시장 내부가 매우 혼잡하므로 카트 또는 핸드캐리로 짐을 옮기시는 것을 추천드립니다",,,,,,,,,,,
+kp_ex_entrance_010,,,,,exhibitor,출입가능시간,준비기간,택배/퀵,전시장에 택배 또는 퀵서비스를 보내려고 하는데요 주소를 어떻게 해야할까요?,사무국에서 택배를 받아드리는 서비스는 없습니다. 또한 전시장은 다양한 구성원이 활동하는 곳이다보니 분실물이 발생할 가능성이 있습니다. 현장에서 기사님과 소통하셔서 직접 수령하셔야 합니다.,,,,,,,,,,,
+kp_ex_entrance_011,,,,,exhibitor,출입가능시간,전시기간,입장시간,참가기업의 입장시간은 어떻게 되나요?,"각 전시장별로 공사, 준비, 출입, 철거시간이 상이하오니 링크를 참고해주세요",https://eandex.co.kr/kimesmanual_113,,,,,,,,,,
+kp_ex_entrance_012,,,,,exhibitor,출입가능시간,철거기간,반출일정,전시회 종료 후 짐은 언제 반출할 수 있나요?,"각 전시장별로 공사, 준비, 출입, 철거시간이 상이하오니 링크를 참고해주세요",https://eandex.co.kr/kimesmanual_114,,,,,,,,,,
+kp_ex_entrance_013,,,,,exhibitor,출입가능시간,철거기간,반출증 작성,반출증은 어떻게 작성하는건가요?,"반출하시려고 하시는 물품을 장비단위/박스단위로 작성해주세요 
+반출증 관련 작성 문의는 현장사무국으로 연락 바랍니다.",,,,,,,,,,,
+kp_ex_entrance_014,,,,,exhibitor,출입가능시간,철거기간,반출증 제출 시간/위치,반출증은 어디서 발급받을 수 있나요?,"반출증 발급 일정은 아래와 같습니다.
+
+시간: 3월 22일(일) 16:00 이후 / 3월 23일(월) 8:30 ~ 15:00
+발급대 위치
+Hall A/AL 참가업체: A1 입구
+Hall B/BL/그랜드볼룸 참가업체: B2 입구
+Hall C/E/EL 참가업체: C1 입구
+Hall D/DL 참가업체: D1 입구",,,,,,,,,,,
+kp_ex_entrance_015,,,,,exhibitor,출입가능시간,철거기간,,반출증은 언제 발급 받을 수 있나요?,"반출증 발급 일정은 아래와 같습니다.
+
+시간: 3월 22일(일) 16:00 이후 / 3월 23일(월) 8:30 ~ 15:00
+발급대 위치
+Hall A/AL 참가업체: A1 입구
+Hall B/BL/그랜드볼룸 참가업체: B2 입구
+Hall C/E/EL 참가업체: C1 입구
+Hall D/DL 참가업체: D1 입구",,,,,,,,,,,
+kp_ex_entrance_016,,,,,exhibitor,출입가능시간,철거기간,차량 입장 시간,철거기간에 차량은 언제부터 들어올 수 있나요?,"차량입장은 전시회 마지막날 3월 22일 오후 6시 이후부터 가능합니다.
+전시장 내부가 매우 혼잡하오니 카트 또는 핸드캐리로 반출하시는 것을 추천드립니다.",,,,,,,,,,,
+kp_ex_booth_001,,,,,exhibitor,부스타입,조립부스,완공 문의,조립부스는 언제쯤 설치가 완료되나요?,"각 홀별로 공사시간이 상이하여 아래 내용 확인 부탁드립니다 
+Hall A/B/C/D: 3/17(화) 점심 이후
+1층/3층 로비 참가업체: 3/18(수) 오전 8시 이후
+Hall E 참가업체: 3/18(수) 오전 9시 이후
+그랜드볼룸(INSPIRE) : 3/18(수) 오후 4시 이후
+※ 상기 일정은 현장 상황에 따라 변동 될 수 있습니다.",,,,,,,,,,,
+kp_ex_booth_002,,,,,exhibitor,부스타입,조립부스,준비 문의,"조립부스 참가기업인데, 언제부터 장비를 세팅할 수 있나요?","각 홀별로 공사시간이 상이하여 아래 내용 확인 부탁드립니다 
+Hall A/B/C/D: 3/17(화) 오후 12시 이후
+1층/3층 로비 참가업체: 3/18(수) 오전 8시 이후
+Hall E 참가업체: 3/18(수) 오전 9시 이후
+그랜드볼룸(INSPIRE) : 3/18(수) 오후 4시 이후
+※ 상기 일정은 현장 상황에 따라 변동 될 수 있습니다.",,,,,,,,,,,
+kp_ex_booth_003,,,,,exhibitor,부스타입,조립부스,간판/상호명 문의,조립부스 간판이 잘못 출력되었습니다,"조립부스 시공사 측에 문의 부탁드립니다.
+Hall A/B: 나라디자인 홍성민 과장 02-557-0481
+Hall C/D(MedicomteK 포함) : 나라디자인 홍성민 과장 02-557-0481
+Hall E/EL 참가업체: 굿플랜서비스 이태림 주임 02-6000-1363
+1층/3층 로비, 그랜드볼룸(INSPIRE) 참가업체: 필립커뮤니케이션즈 양동군 이사 010-9441-2323",,,,,,,,,,,
+kp_ex_booth_004,,,,,exhibitor,부스타입,조립부스,간판/상호명 문의,조립부스 간판이 잘못 붙여져있습니다,"조립부스 시공사 측에 문의 부탁드립니다.
+Hall A/B: 나라디자인 홍성민 과장 02-557-0481
+Hall C/D(MedicomteK 포함) : 나라디자인 홍성민 과장 02-557-0481
+Hall E/EL 참가업체: 굿플랜서비스 이태림 주임 02-6000-1363
+1층/3층 로비, 그랜드볼룸(INSPIRE) 참가업체: 필립커뮤니케이션즈 양동군 이사 010-9441-2323",,,,,,,,,,,
+kp_ex_booth_005,,,,,exhibitor,부스타입,조립부스,기본 제공 가구,기본 제공되는 가구가 어떻게 되죠?,"A,B,C,D홀 및 각 홀 로비
+1-2부스 - 인포 1, 의자 1
+3-4부스 - 인포 2 의자 2 
+5부스 이상 - 인포 3 의자 3
+
+E홀/E Lobby
+1부스 - 인포 1, 의자 1
+2부스 - 인포 1, 의자 1, 상담세트 1
+3부스 - 인포 1, 의사 1, 쇼파세트 ",,,,,,,,,,,
+kp_ex_booth_006,,,,,exhibitor,부스타입,조립부스,기본 제공 가구,기본 제공되는 가구를 더 받을 수 있을까요?,"현장 상황에 따라 추가제공은 어려울 수 있습니다. 각 조립부스 시공사에 문의바라며 추가 임대 시 발생하는 비용은 직접 결제해주시면 됩니다.
+Hall A/B: 나라디자인 홍성민 과장 02-557-0481
+Hall C/D(MedicomteK 포함) : 나라디자인 홍성민 과장 02-557-0481
+Hall E/EL 참가업체: 굿플랜서비스 이태림 주임 02-6000-1363
+1층/3층 로비, 그랜드볼룸(INSPIRE) 참가업체: 필립커뮤니케이션즈 양동군 이사 010-9441-2323",,,,,,,,,,,
+kp_ex_booth_007,,,,,exhibitor,부스타입,조립부스,기본 제공 가구,기본 제공되는 가구를 못받아봤습니다,"조립부스 시공사 측에 문의 부탁드립니다.
+Hall A/B: 나라디자인 홍성민 과장 02-557-0481
+Hall C/D(MedicomteK 포함) : 나라디자인 홍성민 과장 02-557-0481
+Hall E/EL 참가업체: 굿플랜서비스 이태림 주임 02-6000-1363
+1층/3층 로비, 그랜드볼룸(INSPIRE) 참가업체: 필립커뮤니케이션즈 양동군 이사 010-9441-2323",,,,,,,,,,,
+kp_ex_booth_008,,,,,exhibitor,부스타입,조립부스,기본 제공 가구,기본 제공되는 가구를 교체하고 싶어요,"조립부스 시공사 측에 문의 부탁드립니다.
+Hall A/B: 나라디자인 홍성민 과장 02-557-0481
+Hall C/D(MedicomteK 포함) : 나라디자인 홍성민 과장 02-557-0481
+Hall E/EL 참가업체: 굿플랜서비스 이태림 주임 02-6000-1363
+1층/3층 로비, 그랜드볼룸(INSPIRE) 참가업체: 필립커뮤니케이션즈 양동군 이사 010-9441-2323",,,,,,,,,,,
+kp_ex_booth_009,,,,,exhibitor,부스타입,독립부스,시공문의,독립부스 신청한 업체인데 콘센트 설치해주실 수 있으신가요?,"먼저, 독립부스 시공사에 확인을 해주시고 만약 독립부스 시공사에서 전기 설비가 불가능한 경우 아래 연락처로 문의하셔서 직접 결제까지 해주시면 됩니다 
+1층 참가업체: 정성전기 조호익 이사 010-5238-4557
+3층 참가업체: SMS전기 강남훈 팀장 010-9943-4797",,,,,,,,,,,
+kp_ex_utility_001,,,,,exhibitor,부대시설,가구,변경,기존에 신청했던 내역에서 변경할 수 있을까요?,"현장 추가 품목의 재고가 없을 경우, 임대가 불가능할 수 있습니다.
+
+기존 내역에서 변경하게 되면 계산서를 수정해드려야하기 때문에 사무국으로 문의바랍니다",,,,,,,,,,,
+kp_ex_utility_002,,,,,exhibitor,부대시설,가구,취소,기존에 신청했던 내역에서 취소 가능할까요?,현재 취소 가능여부와 취소하신 경우 계산서를 수정해드려야하기 때문에 사무국으로 문의바랍니다,,,,,,,,,,,
+kp_ex_utility_003,,,,,exhibitor,부대시설,가구,추가,현장에서 추가로 가구 임대 가능할까요?,"현장 추가 품목의 재고가 없을 경우, 임대가 불가능할 수 있습니다.
+정확한 임대문의는 하단 연락처로 문의 후 결제도 진행해주시기 바랍니다
+1층 참가업체: 정은영 부장 010-5213-2396
+3층 참가업체: 유아양 사원 010-9196-2660",,,,,,,,,,,
+kp_ex_utility_004,,,,,exhibitor,부대시설,가구,독립부스 가구,독립부스 신청한 업체인데 사무국에서 가구를 임대할 수 있을까요?,"독립부스 시공사는 각 시공사로 가구 임대를 문의하셔야 합니다.
+KIMES 가구임대의 경우, 조립부스 시공사에만 적용됩니다.",,,,,,,,,,,
+kp_ex_utility_005,,,,,exhibitor,부대시설,가구,가구 현장,신청한 가구가 아직 부스에 도착하지 않았습니다,"현장 상황에 따라 순차적으로 가구를 부스에 가져다드리고 있습니다. 잠시 시간을 가지고 기다려주시면 부스로 가져다드리겠습니다.
+
+자세한 일정 문의는 아래 연락처로 문의바랍니다.
+1층 참가업체: 정은영 부장 010-5213-2396
+3층 참가업체: 유아양 사원 010-9196-2660",,,,,,,,,,,
+kp_ex_utility_006,,,,,exhibitor,부대시설,가구,가구 현장,가구 상태가 별로라서 교체를 희망합니다,"가구 협력업체 측으로 연락 바랍니다.
+1층 참가업체: 이용래 과장 010-4813-1169
+3층 참가업체: 박종백 부장 010-7151-6772",,,,,,,,,,,
+kp_ex_utility_007,,,,,exhibitor,부대시설,전기,전기 현장,현장에서 전기를 추가 신청하고 싶습니다,"상황에 따라서 추가 신청은 불가능할 수 있습니다.
+가능 여부 확인이 우선 필요하므로 아래 현장 사무국측으로 연락 바랍니다.",,,,,,,,,,,
+kp_ex_utility_008,,,,,exhibitor,부대시설,전기,전기 현장,장비 시연을 해야하는데 미리 전기 공급가능할까요?,"전시장 내 안전문제로 특정 부스만 전기를 먼저 공급해드리기는 어렵습니다.
+3/18(화) 오후 2시쯤 전시장 구역 별로 순차적으로 공급됩니다.",,,,,,,,,,,
+kp_ex_utility_009,,,,,exhibitor,부대시설,전기,전기 현장,전기는 언제 켜지나요?,3/18(화) 오후 2시쯤 전시장 구역 별로 순차적으로 공급됩니다.,,,,,,,,,,,
+kp_ex_utility_010,,,,,exhibitor,부대시설,전기,전기 현장,저희 부스만 전기가 안들어와요,"조립부스의 경우, 콘센트 문제일 수가 있기 때문에 시공사로 문의 바랍니다.
+Hall A/B: 나라디자인 홍성민 과장 02-557-0481
+Hall C/D(MedicomteK 포함) : 나라디자인 홍성민 과장 02-557-0481
+Hall E/EL 참가업체: 굿플랜서비스 이태림 주임 02-6000-1363
+1층/3층 로비, 그랜드볼룸(INSPIRE) 참가업체: 필립커뮤니케이션즈 양동군 이사 010-9441-2323
+
+독립부스의 경우, 전기가 잘 연결이 되었는지 시공사에 먼저 확인 부탁드리며 그래도 전기가 들어오지 않는 경우, 아래 연락처로 문의바랍니다.
+1층 참가업체: 정성전기 조호익 이사 010-5238-4557
+3층 참가업체: SMS전기 강남훈 팀장 010-9943-4797",,,,,,,,,,,
+kp_ex_utility_011,,,,,exhibitor,부대시설,전기,전기 현장,멀티탭 있나요?,사무국에서 제공해드리는 멀티탭은 없습니다. 코엑스 1층 남문 방향에 있는 링코(종합문구)에서 구매 가능합니다.,,,,,,,,,,,
+kp_ex_utility_012,,,,,exhibitor,부대시설,인터넷,,인터넷선 추가할 수 있을까요?,"공사가 완료된 부스의 경우, 인터넷선 추가 설치 가능여부가 불확실합니다.
+가능여부 확인을 위해 사무국으로 연락 주시기 바랍니다.",,,,,,,,,,,
+kp_ex_utility_013,,,,,exhibitor,부대시설,인터넷,,인터넷선 취소할 수 있을까요?,이미 설치가 완료된 인터넷선의 경우 취소가 불가능합니다.,,,,,,,,,,,
+kp_ex_utility_014,,,,,exhibitor,부대시설,인터넷,,인터넷 연결이 안됩니다.,"아래 코엑스 통신실 측에 연락 바랍니다.
+코엑스 통신실 김승범 차장 010-8563-1420",,,,,,,,,,,
+kp_ex_utility_015,,,,,exhibitor,부대시설,인터넷,,인터넷 연결이 불안정합니다,"아래 코엑스 통신실 측에 연락 바랍니다.
+코엑스 통신실 김승범 차장 010-8563-1420",,,,,,,,,,,
+kp_ex_utility_016,,,,,exhibitor,부대시설,수도,,수도를 추가로 설치하고 싶어요,"공사가 완료된 부스의 경우, 수도 추가 설치 가능여부가 불확실합니다.
+가능여부 확인을 위해 사무국으로 연락 주시기 바랍니다.",,,,,,,,,,,
+kp_ex_utility_017,,,,,exhibitor,부대시설,수도,,신청한 수도를 취소하고 싶어요,이미 설치가 완료된 수도의 경우 취소가 불가능합니다.,,,,,,,,,,,
+kp_ex_utility_018,,,,,exhibitor,부대시설,수도,,수도에 문제가 있어요,"아래 협력업체 측에 연락 바랍니다.
+고려가스산업 차필기 이사 010-6215-9971",,,,,,,,,,,
+kp_ex_utility_019,,,,,exhibitor,부대시설,압축공기,,압축공기를 추가로 설치하고 싶어요,"공사가 완료된 부스의 경우, 수도 추가 설치 가능여부가 불확실합니다.
+가능여부 확인을 위해 사무국으로 연락 주시기 바랍니다.",,,,,,,,,,,
+kp_ex_utility_020,,,,,exhibitor,부대시설,압축공기,,신청한 압축공기를 취소하고 싶어요,이미 설치가 완료된 압축공기의 경우 취소가 불가능합니다.,,,,,,,,,,,
+kp_ex_utility_021,,,,,exhibitor,부대시설,압축공기,,압축공기에 문제가 있어요,"아래 협력업체 측에 연락 바랍니다.
+고려가스산업 차필기 이사 010-6215-9971",,,,,,,,,,,
+kp_ex_utility_022,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,"링크업(LINK-UP) QR스캐너, 참관객 리더기를 신청하고 싶습니다.",사무국으로 문의하여 신청해주시기 바랍니다.,,,,,,,,,,,
+kp_ex_utility_023,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,신청한 요금제로 변경되어 있지 않습니다.,사무국으로 문의해주시기 바랍니다.,,,,,,,,,,,
+kp_ex_utility_024,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,앱 말고 실물리더기로 대여하고 싶어요,"LINK-UP QR스캔 서비스는 리뉴얼된 서비스로, 더이상 실물 리더기는 제공되지 않습니다.",,,,,,,,,,,
+kp_ex_utility_025,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,스캔한 정보는 어떻게 받아볼 수 있나요?,앱 메인페이지 또는 스캔내역 페이지 우측 상단에 엑셀로 내보내기 기능이 있습니다.,,,,,,,,,,,
+kp_ex_utility_026,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,스캔 횟수가 올라가지 않습니다,"단말기의 WIFI, 데이터 연결 상태를 확인해주세요",,,,,,,,,,,
+kp_ex_utility_027,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,로그인이 안됩니다,"전시회 홈페이지 계정이 아닌, 별도의 링크업 계정을 생성해야합니다. 회원가입은 앱 내에서 가능합니다.",,,,,,,,,,,
+kp_ex_utility_028,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,회원가입이 안됩니다,사무국으로 문의해주시기 바랍니다.,,,,,,,,,,,
+kp_ex_utility_029,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,옛날 핸드폰도 사용 가능한가요?,"Android 12버전 이상부터 사용 가능합니다.(최신 버전에서 사용을 권장합니다.)
+iOS 15버전 이상부터 사용 가능합니다.(최신 버전에서 사용을 권장합니다.) ",,,,,,,,,,,
+kp_ex_utility_030,,,,,exhibitor,부대시설,LINK-UP QR스캐너,,어플은 어디서 설치할 수 있나요?,"운영체제별 다운로드 링크를 확인해주세요
+안드로이드 : https://play.google.com/store/apps/details?id=com.koreaenx.eandexqr&pcampaignid=web_share
+iOS(아이폰) : https://apps.apple.com/us/app/link-up-%EC%8A%A4%EC%BA%90%EB%84%88/id6739343131",,,,,,,,,,,
+kp_ex_badge_001,TRUE,,,,exhibitor,출입증,수령위치 및 시간,,출입증은 어디서 수령하나요?,"시간: 3/17일(화) ~ 3/18일(수) 오전 10시 ~ 오후 6시
+위치
+Hall A/AL/B/BL/그랜드볼룸 참가업체: A2 입구 옆
+Hall C/D/DL/E/EL 참가업체: C2 입구 옆
+※ 전시회 첫날인 3/19(목)에도 참관객 출입증 발급대에서 수령은 가능하나,
+발급대가 혼잡할 가능성이 높아 준비기간에 수령하시는 것을 추천드립니다.",,,,,,,,,,,
+kp_ex_badge_002,,,,,exhibitor,출입증,수령위치 및 시간,,출입증은 언제 수령 가능한가요?,"시간: 3/17일(화) ~ 3/18일(수) 오전 10시 ~ 오후 6시
+위치
+Hall A/AL/B/BL/그랜드볼룸 참가업체: A2 입구 옆
+Hall C/D/DL/E/EL 참가업체: C2 입구 옆
+※ 전시회 첫날인 3/19(목)에도 참관객 출입증 발급대에서 수령은 가능하나,
+발급대가 혼잡할 가능성이 높아 준비기간에 수령하시는 것을 추천드립니다.",,,,,,,,,,,
+kp_ex_badge_003,,,,,exhibitor,출입증,수령위치 및 시간,,전시회 시작 후에도 수령 가능한가요?,"전시회 첫날인 3/19(목)에도 참관객 출입증 발급대에서 수령은 가능하나,
+발급대가 혼잡할 가능성이 높아 준비기간에 수령하시는 것을 추천드립니다.",,,,,,,,,,,
+kp_ex_badge_004,,,,,exhibitor,출입증,일괄 수령 가능한지,,한사람이 기업 전체 출입증을 수령해도 될까요?,네 가능합니다.,,,,,,,,,,,
+kp_ex_badge_005,,,,,exhibitor,출입증,추가/수정,,부스 운영 인력에 변화가 생겼는데 추가나 수정 가능할까요?,현장 출입증 발급대에서 추가/수정 가능합니다,,,,,,,,,,,
+kp_ex_badge_006,,,,,exhibitor,출입증,언제부터 필요해요?,,공사기간에도 출입증을 가지고 입장해야하나요?,공사기간에는 출입증을 패용하지 않으셔도 됩니다. 전시기간에 패용해주세요,,,,,,,,,,,
+kp_ex_etc_001,,,,,exhibitor,초청장,추가요청,,초청장을 추가로 받고 싶어요,필요하신 수량을 말씀해주시면 확인 후 전달드리겠습니다. 사무국으로 문의바랍니다.,,,,,,,,,,,
+kp_ex_etc_002,,,,,exhibitor,폐기물 처리,폐기물,,부스에 쓰레기들은 어떻게 처리하죠?,하역장 쪽에서 쓰레기 처리를 위해 마대자루를 판매하고 있습니다. 마대자루 구매 후 처리 부탁드립니다.,,,,,,,,,,,
+kp_ex_etc_003,,,,,exhibitor,폐기물 처리,폐기물,,쓰레기는 부스에 두고 가면 되나요?,"화분, 포장재, 폐기물은 반드시 반출하셔야하며 잔존 시, 처리 비용이 청구됩니다.",,,,,,,,,,,
+kp_ex_etc_004,,,,,exhibitor,현장 사무국,위치,,현장 사무국 위치가 어디인가요?,Hall A/AL/C/E/EL 참가업체: Hall A 2층 (Hall A와 Hall C의 중간층) 주최자 사무실,,,,,,,,,,,
+kp_ex_etc_005,,,,,exhibitor,현장 사무국,연락처,,현장 사무국 연락처가 어떻게 되나요?,,,,,,,,,,,,
+kp_ex_etc_006,,,,,exhibitor,참가확인서,참가확인서,,전시회 참가확인서는 어디서 받을 수 있나요?,"전시회 종료 후 3/23(월)부터 사무실로 연락 주시면 확인 후 발송 도와드리겠습니다.
+사무실 전화번호: 02-551-0102",,,,,,,,,,,
+kp_ex_etc_007,,,,,exhibitor,전시목적 미허가 의료기기,스티커 교환,,전시목적 미허가 의료기기 스티커는 어디서 교환하나요?,"식약처로부터 받은 공문을 출력하신 후, 3/17(화)~3/18(수)에 현장 사무국으로 방문하셔서 제출해주시면, 전시품에 부착하는 스티커로 교환해드립니다.",,,,,,,,,,,
+kp_ex_etc_008,,,,,exhibitor,27년 참가신청,27년 참가신청,,27년 참가신청은 어떻게 하나요?,"추후 안내가 나갈 예정이며, 27년 참가 안내는 2026년 7월~8월로 예정되어있습니다.
+하반기 부산국제의료기기전시회는 10월 23일부터 25일에 개최되며, 현쟁 홈페이지에서 참가신청을 받고 있습니다.",,,,,,,,,,,
+,,,,,exhibitor,비품 구매,비품 구매,,근처에 필요물품 살 수 있는 곳 있나요?,코엑스 1층 남문 앞에 링코 라는 문구점과 코엑스 스타필드몰 지하1층 다이소가 있습니다,,,,,,,,,,,
+kp_ex_hotline_001,,,,,exhibitor,협력업체 연락처,협력업체 연락처,,조립부스 시공사 연락처가 어떻게 되나요?,"아래 연락처로 부스번호와 참가업체명을 말씀해주시면 보다 신속한 조치가 가능합니다.
+Hall A/B: 나라디자인 홍성민 과장 02-557-0481
+Hall C/D(MedicomteK 포함) : 나라디자인 홍성민 과장 02-557-0481
+Hall E/EL 참가업체: 굿플랜서비스 이태림 주임 02-6000-1363
+1층/3층 로비, 그랜드볼룸(INSPIRE) 참가업체: 필립커뮤니케이션즈 양동군 이사 010-9441-2323",,,,,,,,,,,
+kp_ex_hotline_002,,,,,exhibitor,협력업체 연락처,협력업체 연락처,,전기 시공 업체 연락처가 어떻게 되나요?,"아래 연락처로 부스번호와 참가업체명을 말씀해주시면 보다 신속한 조치가 가능합니다.
+1층 참가업체: 정성전기 조호익 이사 010-5238-4557
+3층 참가업체: SMS전기 강남훈 팀장 010-9943-4797",,,,,,,,,,,
+kp_ex_hotline_003,,,,,exhibitor,협력업체 연락처,협력업체 연락처,,수도/압축공기 시공 업체 연락처가 어떻게 되나요?,"아래 연락처로 부스번호와 참가업체명을 말씀해주시면 보다 신속한 조치가 가능합니다.
+고려가스산업 차필기 이사 010-6215-9971",,,,,,,,,,,
+kp_ex_hotline_004,,,,,exhibitor,협력업체 연락처,협력업체 연락처,,인터넷 시공 업체 연락처가 어떻게 되나요?,"아래 연락처로 부스번호와 참가업체명을 말씀해주시면 보다 신속한 조치가 가능합니다.
+코엑스 통신실 김승범 차장 010-8563-1420",,,,,,,,,,,
+kp_ex_hotline_005,,,,,exhibitor,협력업체 연락처,협력업체 연락처,,가구 업체 연락처가 어떻게 되나요?,"아래 연락처로 부스번호와 참가업체명을 말씀해주시면 보다 신속한 조치가 가능합니다.
+[신청문의]
+1층 참가업체: 정은영 부장 010-5213-2396
+3층 참가업체: 유아양 사원 010-9196-2660
+
+[설치문의]
+1층 참가업체: 이용래 과장 010-4813-1169
+3층 참가업체: 박종백 부장 010-7151-6772",,,,,,,,,,,
+kp_ex_hotline_006,,,,,exhibitor,협력업체 연락처,협력업체 연락처,,현장 사무국 연락처가 어떻게 되나요?,,,,,,,,,,,,
+kp_ex_hotline_007,,,,,exhibitor,협력업체 연락처,협력업체 연락처,,현장 지게차 연락처가 어떻게 되나요?,아래 연락처로 부스번호와 참가업체명을 말씀해주시면 보다 신속한 조치가 가능합니다.,,,,,,,,,,,
+kp_ex_hotline_008,,,,,exhibitor,협력업체 연락처,협력업체 연락처,,통역 및 부스 안내요원도 구할 수 있나요?,"아래 연락처로 부스번호와 참가업체명을 말씀해주시면 보다 신속한 조치가 가능합니다.
+브링코 조재호 실장 010-9669-5782",,,,,,,,,,,
+kp_ex_park_001,,,,,exhibitor,주차,주차 장소,,짐을 옮기려고 하는데 주차를 어디다가 해야하나요?,"일반차량의 경우 코엑스 지하에 주차하여 짐을 옮기셔야 합니다. 코엑스 지하주차장 블루, 퍼플 지역이 전시장과 가깝습니다.",,,,,,,,,,,
+kp_ex_park_002,,,,,exhibitor,주차,주차 비용,,주차 비용이 어떻게 되나요?,"승용차: 15분마다 1,500원, 일일 주차 60,000원
+화물차(2.5t 이상 승용차): 15분마다 3,000원, 일일 주차 120,000원
+대형버스: 주차장 이용불가",,,,,,,,,,,
+kp_ex_park_003,,,,,exhibitor,주차,주차 할인,주차할인,전시회 참가업체 대상 무료 주차 제공이 있나요?,"별도로 제공되는 내용은 없습니다 
+참가업체 대상으로 '카카오 T 주차 for Manager'에서 시간권, 종일권을 구매하실 수 있는 서비스가 안내되고 있습니다. 자세한 내용은 아래 링크를 확인 부탁드립니다",https://eandex.co.kr/kimesmanual_116,,,,,,,,,,
+kp_ex_park_004,,,,,exhibitor,주차,주차권 구매,,주차권을 구매할 수 있나요?,"지류로 구매하실 수는 없고, 참가업체 대상으로 '카카오 T 주차 for Manager'에서 시간권, 종일권을 구매하실 수 있는 서비스가 안내되고 있습니다. 자세한 내용은 아래 링크를 확인 부탁드립니다",https://eandex.co.kr/kimesmanual_116,,,,,,,,,,
+,,,,,,,주차계정 생성,,참가업체 대상 주차할인권은 어떻게 구매하나요?,"참가업체 대상으로 '카카오 T 주차 for Manager'에서 시간권, 종일권을 구매하실 수 있는 서비스가 안내되고 있습니다. 
+
+1. 계정 생성 후 코엑스 주차센터 승인(02-6002-7130)
+2. 행사권 구매
+3. 입차한 차량에 적용
+
+자세한 내용은 아래 링크를 확인 부탁드립니다",https://eandex.co.kr/kimesmanual_116,,,,,,,,,,
+,,,,,,,부대시설,,부대시설 추가로 신청 가능한가요?,"어떤 항목을 추가하고 싶으신지 말씀해주세요
+예) 전기, 인터넷, 가구 등",,,,,,,,,,,

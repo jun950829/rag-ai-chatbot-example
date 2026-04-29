@@ -1,4 +1,18 @@
-"""DB fetch → embed → upsert into four pgvector tables (no FastAPI)."""
+"""KPRINT RAG용 임베딩 파이프라인 (DB 조회 → 벡터 생성 → pgvector UPSERT).
+
+이 모듈은 FastAPI와 분리되어 있으며, **배치 임베딩**과 **쿼리 임베딩·벡터 검색**을 담당한다.
+
+배치 임베딩(메인 흐름)이 거치는 단계:
+  1) DB에서 원본 행 로드 — `_fetch_kprint_exhibitor_rows` / `_fetch_kprint_exhibit_item_rows`
+  2) 행마다 profile 텍스트·evidence 청크 구성 — `_profile_text_for_entity`, `_evidence_chunks_for_entity`
+  3) 모델로 텍스트 벡터화 — `_build_embeddings` 내부에서 `_encode` 호출
+  4) 네 개의 임베딩 테이블(kor/eng × profile/evidence)에 UPSERT — `_upsert_embeddings`
+  (선행) pgvector 확장 보장 — `_embedding_ddl_statements`
+
+검색(RAG 조회) 흐름:
+  - 질문 문장 벡터: `embed_query_text` → (원격이면 HTTP, 아니면 로컬 `_embed_texts`)
+  - 유사도 검색: `search_embedding_tables` (테이블 UNION + `<=>` 거리)
+"""
 
 from __future__ import annotations
 
@@ -29,6 +43,8 @@ DEFAULT_EMBEDDING_DEVICE = os.environ.get("EMBEDDING_DEVICE", "mps")
 
 @dataclass(frozen=True)
 class ModelTableSet:
+    """한 엔티티(참가업체 또는 전시품)에 대응하는 4개 임베딩 테이블 이름 묶음."""
+
     profile_kor: str
     profile_eng: str
     evidence_kor: str
@@ -37,6 +53,8 @@ class ModelTableSet:
 
 @dataclass(frozen=True)
 class KprintModelTableBundle:
+    """참가업체 + 전시품 두 종류의 테이블 세트를 한 번에 들고 다니는 구조."""
+
     exhibitor: ModelTableSet
     exhibit_item: ModelTableSet
 
@@ -63,24 +81,27 @@ EVIDENCE_TABLE_ENG = KPRINT_EXHIBITOR_QWEN.evidence_eng
 
 
 def _kprint_bundle_for_model(_model_id: str = "") -> KprintModelTableBundle:
-    """KPRINT 임베딩 테이블은 Qwen3 0.6B 전용(pgvector 테이블명 고정)."""
+    """모델 ID에 상관없이 KPRINT용 Qwen3 0.6B 테이블 번들을 반환한다 (테이블명 고정)."""
     return KprintModelTableBundle(KPRINT_EXHIBITOR_QWEN, KPRINT_EXHIBIT_ITEM_QWEN)
 
 
 def _kprint_table_set_for_entity(
     entity: Literal["exhibitor", "exhibit_item"], model_id: str
 ) -> ModelTableSet:
+    """엔티티 종류(참가업체 vs 전시품)에 맞는 4테이블 세트만 골라 반환한다."""
     bundle = _kprint_bundle_for_model(model_id)
     return bundle.exhibit_item if entity == "exhibit_item" else bundle.exhibitor
 
 
 def _kprint_parent_sql_table(entity: Literal["exhibitor", "exhibit_item"]) -> str:
+    """임베딩 행이 참조하는 원본 테이블명(로깅/DDL 호환용)."""
     return "kprint_exhibit_item" if entity == "exhibit_item" else "kprint_exhibitor"
 
 _UPSERT_ROWS_PER_EXECUTE = 1000
 
 
 def _resolve_device(device: str | None) -> str | None:
+    """요청 device를 정규화한다. MPS는 사용 가능할 때만, 아니면 CPU로 떨어진다."""
     requested = (device or "").strip().lower() or DEFAULT_EMBEDDING_DEVICE
     if requested != "mps":
         return requested
@@ -95,6 +116,8 @@ def _resolve_device(device: str | None) -> str | None:
 
 
 class _EmbeddingLocalSettings(BaseSettings):
+    """스크립트 단독 실행 시 `.env`에서 DB URL만 읽기 위한 최소 설정."""
+
     embedding_database_url: Optional[str] = None
     database_url: Optional[str] = None
 
@@ -107,6 +130,7 @@ class _EmbeddingLocalSettings(BaseSettings):
 
 
 def _resolve_database_url() -> str:
+    """동기 SQLAlchemy 엔진용 Postgres URL. Docker 안/밖에 따라 host(db vs localhost)를 보정한다."""
     settings = _EmbeddingLocalSettings()
     url = settings.embedding_database_url or settings.database_url
     in_container = (PROJECT_ROOT / ".dockerenv").exists() or Path("/.dockerenv").exists()
@@ -122,8 +146,9 @@ def _resolve_database_url() -> str:
     return url
 
 
-engine = sa.create_engine(_resolve_database_url(), future=True, pool_pre_ping=True)
+engine = sa.create_engine(_resolve_database_url(), future=True, pool_pre_ping=True)  # 배치/검색 공용 동기 DB 엔진
 
+# 참가업체·전시품 테이블에서 profile(요약) vs evidence(나머지 컬럼 청크)로 나눌 때 쓰는 컬럼 목록
 KPRINT_EXHIBITOR_PROFILE_KOR: tuple[str, ...] = (
     "company_name_kor",
     "exhibit_year",
@@ -168,20 +193,24 @@ KPRINT_EXHIBIT_ITEM_PROFILE_ALL = set(KPRINT_EXHIBIT_ITEM_PROFILE_KOR) | set(KPR
 
 
 def _safe_str(value: Any) -> str:
+    """DB/CSV 값을 안전한 문자열로 정리 (None → 빈 문자열, strip)."""
     if value is None:
         return ""
     return str(value).strip()
 
 
 def _is_kor_col(name: str) -> bool:
+    """컬럼명이 한국어 필드인지 (`_kor` 포함 여부)."""
     return "_kor" in name
 
 
 def _is_eng_col(name: str) -> bool:
+    """컬럼명이 영어 필드인지 (`_eng` 포함 여부)."""
     return "_eng" in name
 
 
 def _chunk_text(text: str, *, max_chars: int, overlap: int) -> list[str]:
+    """긴 텍스트를 evidence용으로 겹침(overlap)을 두고 잘라 여러 청크로 만든다."""
     text = text.strip()
     if not text:
         return []
@@ -202,20 +231,24 @@ def _chunk_text(text: str, *, max_chars: int, overlap: int) -> list[str]:
 
 
 def _content_hash(content: str) -> str:
+    """동일 내용 UPSERT/중복 방지용 SHA256 해시."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def _vector_literal(vec: list[float]) -> str:
+    """pgvector SQL 리터럴 형태 `[0.1,0.2,...]` 문자열로 변환."""
     return "[" + ",".join(f"{float(x):.8f}" for x in vec) + "]"
 
 
 def _is_qwen3_vl_embedding_model(model_id: str) -> bool:
+    """멀티모달 Qwen3-VL 임베딩 경로인지 판별 (일반 SentenceTransformer와 분기)."""
     m = model_id.lower()
     return "qwen3-vl-embedding" in m
 
 
 @lru_cache(maxsize=4)
 def _get_sentence_transformer(model_id: str, device: str | None):
+    """SentenceTransformer 모델을 한 번 로드해 캐시한다 (일반 텍스트 임베딩)."""
     from sentence_transformers import SentenceTransformer
 
     kwargs: dict[str, Any] = {"trust_remote_code": True}
@@ -226,6 +259,7 @@ def _get_sentence_transformer(model_id: str, device: str | None):
 
 @lru_cache(maxsize=4)
 def _get_qwen3_vl_embedder(model_id: str, device: str | None):
+    """Qwen3-VL 임베딩 전용 래퍼를 로드한다 (텍스트만 넣어도 벡터 생성)."""
     from app.rag.qwen3_vl_embedding_upstream import Qwen3VLEmbedder
 
     return Qwen3VLEmbedder(model_name_or_path=model_id, device=device, trust_remote_code=True)
@@ -239,6 +273,7 @@ def _encode(
     model_id: str,
     on_batch: Optional[Callable[[int, int], None]] = None,
 ) -> list[list[float]]:
+    """문장 리스트를 float32 벡터 리스트로 배치 인코딩 (Qwen3-VL vs ST 경로 분기)."""
     if not texts:
         return []
 
@@ -272,6 +307,7 @@ def _encode(
 
 
 def _profile_text_from_columns(row: dict[str, str], cols: tuple[str, ...]) -> str:
+    """지정 컬럼만 `이름: 값` 줄로 이어 붙여 profile 한 덩어리 텍스트를 만든다."""
     lines = [f"{c}: {_safe_str(row.get(c))}" for c in cols if _safe_str(row.get(c))]
     return "\n".join(lines).strip()
 
@@ -279,6 +315,7 @@ def _profile_text_from_columns(row: dict[str, str], cols: tuple[str, ...]) -> st
 def _profile_text_for_entity(
     row: dict[str, str], *, lang: str, entity: Literal["exhibitor", "exhibit_item"]
 ) -> str:
+    """엔티티·언어(kor/eng)에 맞는 profile 컬럼 집합으로 `_profile_text_from_columns` 호출."""
     if entity == "exhibit_item":
         cols = KPRINT_EXHIBIT_ITEM_PROFILE_KOR if lang == "kor" else KPRINT_EXHIBIT_ITEM_PROFILE_ENG
     else:
@@ -294,6 +331,7 @@ def _evidence_chunks_for_entity(
     overlap: int,
     entity: Literal["exhibitor", "exhibit_item"],
 ) -> list[dict[str, Any]]:
+    """profile에 쓴 컬럼·반대 언어 컬럼을 제외한 나머지를 필드별로 청크해 evidence 목록으로 만든다."""
     profile_all = KPRINT_EXHIBIT_ITEM_PROFILE_ALL if entity == "exhibit_item" else KPRINT_EXHIBITOR_PROFILE_ALL
     skip = profile_all | {"id"}
     chunks: list[dict[str, Any]] = []
@@ -327,6 +365,16 @@ def _build_embeddings(
     koba_entity: Literal["exhibitor", "exhibit_item"] = "exhibitor",
     progress: Optional[Callable[[str, int], None]] = None,
 ) -> dict[str, list[dict[str, Any]]]:
+    """배치 임베딩의 핵심: DB 행 리스트 → 4테이블별 레코드(텍스트+벡터) 딕셔너리.
+
+    내부 단계 요약:
+      A. 출력 버킷 초기화 (profile_kor/eng, evidence_kor/eng 테이블명 키)
+      B. device 결정 후 임베더 로드 (Qwen3-VL 또는 SentenceTransformer)
+      C. `entity_batch_size`만큼 행을 묶어 반복:
+           C1. 각 행·kor/eng에 대해 profile 1건 + evidence N건을 `all_jobs`에 적재
+           C2. 모든 job의 본문을 한꺼번에 `_encode` → 벡터를 각 레코드에 붙임
+      D. 테이블명 → 레코드 리스트 맵을 반환 (`_upsert_embeddings` 입력)
+    """
     def p(message: str, percent: int) -> None:
         if progress:
             progress(message, percent)
@@ -444,7 +492,7 @@ def _embedding_ddl_statements(
     parent_table: str | None = None,
     _parent_table: str | None = None,
 ) -> list[str]:
-    """KPRINT embedding DDL is owned by Alembic; keep only extension ensure for ad-hoc DBs.
+    """UPSERT 전에 실행할 DDL 문장 목록. 실제 테이블 생성은 Alembic 담당, 여기서는 pgvector 확장만 보장.
 
     Note:
     - Older call sites used `parent_table=...`
@@ -461,6 +509,7 @@ def _upsert_embeddings(
     koba_entity: Literal["exhibitor", "exhibit_item"] = "exhibitor",
     progress: Optional[Callable[[str, int], None]] = None,
 ) -> dict[str, int]:
+    """`_build_embeddings` 결과를 네 임베딩 테이블에 ON CONFLICT UPSERT하고 테이블별 건수를 반환."""
     def p(message: str, percent: int) -> None:
         if progress:
             progress(message, percent)
@@ -543,6 +592,7 @@ def _upsert_embeddings(
 
 
 def _row_from_mapping(record: dict[str, Any], table: sa.Table) -> dict[str, str]:
+    """SQLAlchemy 매핑 행을 임베딩 파이프라인용 `dict[str, str]`로 정규화 (리스트는 join)."""
     row: dict[str, str] = {}
     for col in table.columns:
         value = record.get(col.name)
@@ -554,6 +604,7 @@ def _row_from_mapping(record: dict[str, Any], table: sa.Table) -> dict[str, str]
 
 
 def _fetch_kprint_exhibitor_rows(limit: int | None) -> list[dict[str, str]]:
+    """`kprint_exhibitor` 전체(또는 limit)를 읽어 임베딩 입력 행 리스트로 반환."""
     metadata = sa.MetaData()
     tbl = sa.Table("kprint_exhibitor", metadata, autoload_with=engine)
     stmt = sa.select(tbl)
@@ -569,6 +620,7 @@ def _fetch_kprint_exhibitor_rows(limit: int | None) -> list[dict[str, str]]:
 
 
 def _fetch_kprint_exhibit_item_rows(limit: int | None) -> list[dict[str, str]]:
+    """`kprint_exhibit_item` 전체(또는 limit)를 읽어 임베딩 입력 행 리스트로 반환."""
     metadata = sa.MetaData()
     tbl = sa.Table("kprint_exhibit_item", metadata, autoload_with=engine)
     stmt = sa.select(tbl)
@@ -590,6 +642,7 @@ def _embed_texts(
     device: str | None,
     batch_size: int = 32,
 ) -> list[list[float]]:
+    """임의 텍스트 리스트를 로컬 모델로만 임베딩 (쿼리/배치 공용 저수준 API)."""
     resolved_device = _resolve_device(device)
     if _is_qwen3_vl_embedding_model(model_id):
         embedder = _get_qwen3_vl_embedder(model_id, resolved_device)
@@ -606,6 +659,7 @@ def _embed_query_via_http(
     device: str | None,
     timeout_sec: int = 120,
 ) -> list[float]:
+    """별도 임베딩 서비스 HTTP `/v1/embed/query`로 질의 벡터 한 개를 받아온다."""
     q = (query or "").strip()
     if not q:
         raise ValueError("query is empty")
@@ -638,6 +692,7 @@ def embed_query_text(
     device: str | None,
     remote_base_url: str | None = None,
 ) -> list[float]:
+    """RAG 검색용 질문 한 줄을 벡터로 변환. URL/환경변수가 있으면 원격, 없으면 로컬 `_embed_texts`."""
     q = (query or "").strip()
     if not q:
         raise ValueError("query is empty")
@@ -659,6 +714,7 @@ def search_embedding_tables(
     chunk_type: str,
     entity_scope: str = "all",
 ) -> list[dict[str, Any]]:
+    """질의 벡터와 코사인 거리(`<=>`)로 여러 임베딩 테이블을 UNION 검색해 상위 `top_k` 행을 반환."""
     top_k = max(1, int(top_k))
 
     bundle = _kprint_bundle_for_model(model_id)
@@ -751,6 +807,7 @@ def search_embedding_tables(
 
 
 def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str:
+    """검색 결과를 한국어 안내 문구+프로필 발췌 형태로 묶어 채팅/로그용 문자열을 만든다."""
     q = (query or "").strip()
     if not results:
         return f"'{q}'와(과) 관련된 업체를 찾지 못했습니다. 검색어를 더 구체적으로 입력해 주세요."
@@ -781,7 +838,7 @@ def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str
     return "\n".join(lines)
 
 
-# Backward-compatible aliases for existing imports/callers.
+# 구버전 import/호출자 호환용 별칭 (동일 함수를 가리킴).
 _koba_bundle_for_model = _kprint_bundle_for_model
 _koba_table_set_for_entity = _kprint_table_set_for_entity
 _koba_parent_sql_table = _kprint_parent_sql_table

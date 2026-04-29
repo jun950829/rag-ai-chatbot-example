@@ -52,7 +52,12 @@ async def execute_retrieval_pipeline(
     if intent not in INTENT_LABELS:
         intent = "general"
     # --- 단계 1-b: 검색 축·후행 플래그 추출 (응답·DB·플래너에서 공통 사용) ---
-    retrieval_topic = intent_meta.get("retrieval_topic")
+    _rt_raw = intent_meta.get("retrieval_topic")
+    retrieval_topic = (
+        str(_rt_raw).strip().lower()
+        if isinstance(_rt_raw, str) and str(_rt_raw).strip().lower() in {"company", "product", "all"}
+        else "all"
+    )
     is_dialog_followup = bool(intent_meta.get("is_dialog_followup", False))
     logger.info(
         "[retrieval][step1] intent=%s retrieval_topic=%s is_dialog_followup=%s",
@@ -114,9 +119,7 @@ async def execute_retrieval_pipeline(
         )
     else:
         # --- 단계 3-b: 플래너에는 검색 축(retrieval_topic)을 넘겨 follow-up+제품 확장을 태운다 ---
-        rt_for_plan = (retrieval_topic or "all") if isinstance(retrieval_topic, str) else "all"
-        if rt_for_plan not in {"company", "product", "all"}:
-            rt_for_plan = "all"
+        rt_for_plan = retrieval_topic if retrieval_topic in {"company", "product", "all"} else "all"
         planned_queries, planning_meta = await generate_search_plan_v2(
             message=normalized_query,
             language=language,
@@ -162,7 +165,7 @@ async def execute_retrieval_pipeline(
         )
         return {
             "intent": intent,
-            "retrieval_topic": retrieval_topic,
+            "retrieval_topic": retrieval_topic,  # 항상 company|product|all 문자열
             "is_dialog_followup": is_dialog_followup,
             "language": language,
             "planned_queries": [],
@@ -178,7 +181,7 @@ async def execute_retrieval_pipeline(
 
     search_lang = "kor" if language == "ko" else "eng"
     # --- 단계 4: entity_scope는 라우팅 intent가 아니라 retrieval_topic 기준으로 결정한다 ---
-    entity_scope = entity_scope_from_retrieval_topic(retrieval_topic if isinstance(retrieval_topic, str) else None)
+    entity_scope = entity_scope_from_retrieval_topic(retrieval_topic)
     searches = semantic_search_multi_query(
         queries=planned_queries,
         model_id=cfg.model_id,
@@ -231,7 +234,7 @@ async def execute_retrieval_pipeline(
     )
     return {
         "intent": intent,
-        "retrieval_topic": retrieval_topic if isinstance(retrieval_topic, str) else "all",
+        "retrieval_topic": retrieval_topic,
         "is_dialog_followup": is_dialog_followup,
         "language": language,
         "planned_queries": planned_queries,
