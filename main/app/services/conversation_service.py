@@ -24,9 +24,20 @@ class ConversationService:
         self.messages = MessageRepository(db)
 
     async def get_or_create_session(self, session_id: str) -> uuid.UUID:
-        """session_id 문자열을 UUID로 정규화하고, 없으면 세션을 생성한다."""
+        """session_id 문자열을 UUID로 정규화하고, 없으면 세션을 생성한다.
 
-        sid = uuid.UUID(session_id)
+        운영에서는 브라우저/클라이언트가 UUID가 아닌 임의 문자열을 쓰는 경우가 흔하다.
+        이때도 DB PK(UUID)로 저장할 수 있도록 **결정적(deterministic) 매핑**을 사용한다.
+        - UUID 문자열이면 그대로 사용
+        - 그 외 문자열이면 uuid5로 안정적으로 변환
+        """
+
+        raw = (session_id or "").strip()
+        try:
+            sid = uuid.UUID(raw)
+        except Exception:
+            # 같은 session_id 문자열은 항상 같은 UUID로 매핑된다.
+            sid = uuid.uuid5(uuid.NAMESPACE_URL, raw or "anonymous")
         existing = await self.conversations.get_session(sid)
         if existing is None:
             await self.conversations.create_session(session_id=sid)

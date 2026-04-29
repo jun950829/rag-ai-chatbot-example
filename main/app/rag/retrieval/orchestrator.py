@@ -12,6 +12,7 @@ from app.rag.retrieval.intent import (
     build_intent_heuristic_answer,
     classify_intent_v2,
     detect_language,
+    entity_scope_from_retrieval_topic,
 )
 from app.rag.retrieval.logging_utils import append_step, build_openai_usage_summary
 from app.rag.retrieval.memory import ConversationMemory
@@ -50,7 +51,15 @@ async def execute_retrieval_pipeline(
     )
     if intent not in INTENT_LABELS:
         intent = "general"
-    logger.info("[retrieval][step1] intent=%s", intent)
+    # --- 단계 1-b: 검색 축·후행 플래그 추출 (응답·DB·플래너에서 공통 사용) ---
+    retrieval_topic = intent_meta.get("retrieval_topic")
+    is_dialog_followup = bool(intent_meta.get("is_dialog_followup", False))
+    logger.info(
+        "[retrieval][step1] intent=%s retrieval_topic=%s is_dialog_followup=%s",
+        intent,
+        retrieval_topic,
+        is_dialog_followup,
+    )
     classification_source = str(intent_meta.get("source", "unknown"))
     used_openai = _intent_meta_used_openai(intent_meta)
     classification_path_text = "OpenAI 기반 분류" if used_openai else "휴리스틱 분류"
@@ -58,9 +67,14 @@ async def execute_retrieval_pipeline(
         step_logs,
         step=1,
         title="의도 분류",
-        detail=f"query 의도를 '{intent}'로 분류 (분류 경로: {classification_path_text}, source={classification_source})",
+        detail=(
+            f"query 의도를 '{intent}'로 분류, 검색축={retrieval_topic or '-'}, "
+            f"대화후행={is_dialog_followup} (분류 경로: {classification_path_text}, source={classification_source})"
+        ),
         data={
             "intent": intent,
+            "retrieval_topic": retrieval_topic,
+            "is_dialog_followup": is_dialog_followup,
             "query": normalized_query,
             "classification_meta": intent_meta,
             "openai_used_for_intent": used_openai,
@@ -99,10 +113,16 @@ async def execute_retrieval_pipeline(
             data={"skipped": True, "intent": intent, "query_planner_meta": planning_meta["planner_meta"]},
         )
     else:
+        # --- 단계 3-b: 플래너에는 검색 축(retrieval_topic)을 넘겨 follow-up+제품 확장을 태운다 ---
+        rt_for_plan = (retrieval_topic or "all") if isinstance(retrieval_topic, str) else "all"
+        if rt_for_plan not in {"company", "product", "all"}:
+            rt_for_plan = "all"
         planned_queries, planning_meta = await generate_search_plan_v2(
             message=normalized_query,
             language=language,
             intent=intent,
+            retrieval_topic=rt_for_plan,
+            is_dialog_followup=is_dialog_followup,
             openai_client=openai_client,
             openai_model=intent_model,
             min_queries=cfg.min_queries,
@@ -142,6 +162,8 @@ async def execute_retrieval_pipeline(
         )
         return {
             "intent": intent,
+            "retrieval_topic": retrieval_topic,
+            "is_dialog_followup": is_dialog_followup,
             "language": language,
             "planned_queries": [],
             "per_query_results": [],
@@ -155,12 +177,8 @@ async def execute_retrieval_pipeline(
         }
 
     search_lang = "kor" if language == "ko" else "eng"
-    # intent에 따라 검색 스코프(회사/제품)를 제한한다.
-    entity_scope = "all"
-    if intent == "company":
-        entity_scope = "company"
-    elif intent == "product":
-        entity_scope = "product"
+    # --- 단계 4: entity_scope는 라우팅 intent가 아니라 retrieval_topic 기준으로 결정한다 ---
+    entity_scope = entity_scope_from_retrieval_topic(retrieval_topic if isinstance(retrieval_topic, str) else None)
     searches = semantic_search_multi_query(
         queries=planned_queries,
         model_id=cfg.model_id,
@@ -213,6 +231,8 @@ async def execute_retrieval_pipeline(
     )
     return {
         "intent": intent,
+        "retrieval_topic": retrieval_topic if isinstance(retrieval_topic, str) else "all",
+        "is_dialog_followup": is_dialog_followup,
         "language": language,
         "planned_queries": planned_queries,
         "per_query_results": searches,

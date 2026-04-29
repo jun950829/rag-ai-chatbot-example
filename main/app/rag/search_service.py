@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -23,6 +24,8 @@ async def _generate_korean_answer_with_openai(
     model: str,
     intent: str,
     language: str,
+    retrieval_topic: str | None,
+    is_dialog_followup: bool,
 ) -> str:
     if not results:
         return "검색 결과가 없어 답변을 생성할 수 없습니다."
@@ -39,7 +42,14 @@ async def _generate_korean_answer_with_openai(
             f"external_id={r.get('external_id')}, source_field={r.get('source_field')}, content={content}"
         )
     context_text = "\n".join(lines)
-    user_tone = "질문 의도가 명확한 검색 요청" if intent in {"company", "product"} else f"질문 의도={intent}"
+    # --- 단계: 답변 LLM에 라우팅 intent와 검색 축·후행 여부를 함께 넘겨 톤을 맞춘다 ---
+    rt = (retrieval_topic or "all").strip().lower()
+    fu_txt = "직전 대화를 이어 받는 후행 질문" if is_dialog_followup else "신규 검색형 질문"
+    user_tone = (
+        f"질문 의도={intent}, 검색축={rt}, 대화특성={fu_txt}"
+        if intent not in {"company", "product"} or is_dialog_followup
+        else f"질문 의도가 명확한 검색 요청 (축={rt})"
+    )
     language_rule = "한국어로 답변" if language == "ko" else "기본은 한국어, 필요 시 핵심 영문 키워드 병기"
     resp = await client.chat.completions.create(
         model=model,
@@ -58,7 +68,7 @@ async def _generate_korean_answer_with_openai(
                 "role": "user",
                 "content": (
                     f"질문: {query}\n\n"
-                    f"의도 분류: {intent}\n"
+                    f"의도 분류: {intent} | 검색축: {rt} | 후행: {is_dialog_followup}\n"
                     f"질문 톤 해석: {user_tone}\n\n"
                     f"검색 결과:\n{context_text}\n\n"
                     "요청:\n"
@@ -128,34 +138,25 @@ async def run_vector_search(
             client_kwargs["base_url"] = (openai_base_url or "").strip()
         openai_client = AsyncOpenAI(**client_kwargs)
 
-    # (프로덕션) 세션 기반 DB 컨텍스트를 쓰는 경우: DB → memory hydrate
+    # --- 단계 0: 세션이 있으면 DB에서 메모리만 적재하고, 사용자 메시지 저장은 파이프라인 이후로 미룬다 ---
+    # (이유: intent·retrieval_topic·is_dialog_followup은 classify 이후에야 확정되므로 한 번에 저장한다.)
     db_memory = memory
     has_history = False
+    session_uuid_for_save: uuid.UUID | None = None
+    fu_state: tuple[bool, float, dict] | None = None
     if session_id:
         from app.db.session import AsyncSessionLocal
-        from app.services import ConversationService, MessageService, is_followup_v2
+        from app.services import ConversationService, is_followup_v2
 
         async with AsyncSessionLocal() as db:
             conv = ConversationService(db)
-            msg_svc = MessageService(db)
             sid = await conv.get_or_create_session(session_id)
             db_memory = await conv.hydrate_memory(sid, limit=5)
             has_history = len(db_memory.get_recent()) > 0
-
-            # follow-up 판단은 최근 메시지 기반으로 별도 계산(LLM 없이)
             hist_texts = [m.get("message", "") for m in db_memory.get_recent()][-5:]
             is_fu, fu_conf, fu_meta = is_followup_v2(current=query, history=hist_texts)
-
-            # 사용자가 입력한 메시지는 retrieval 전에 저장
-            # (intent는 retrieval 결과가 나오기 전이므로 일단 pipeline intent를 사용)
-            # → 여기서는 임시로 general로 넣고, 아래에서 업데이트하지는 않는다.
-            await msg_svc.save_user_message(
-                session_id=sid,
-                content=query,
-                intent="followup" if is_fu else "general",
-                is_followup=is_fu,
-                confidence=fu_conf,
-            )
+            fu_state = (is_fu, fu_conf, fu_meta)
+            session_uuid_for_save = sid
 
     retrieval_payload = await execute_retrieval_pipeline(
         query,
@@ -178,12 +179,42 @@ async def run_vector_search(
         memory=db_memory or _DEFAULT_MEMORY,
     )
 
+    # --- 단계 1: 파이프라인 결과로 사용자 메시지 메타를 확정 저장 (세션 모드 전용) ---
+    if session_uuid_for_save is not None:
+        from app.db.session import AsyncSessionLocal
+        from app.services import MessageService
+
+        pip_intent = str(retrieval_payload["intent"])
+        pip_fu = bool(retrieval_payload.get("is_dialog_followup", False))
+        pip_topic = retrieval_payload.get("retrieval_topic")
+        if pip_topic is None:
+            pip_topic = "all"
+        pip_topic = str(pip_topic).strip().lower()
+        if fu_state is not None:
+            _heu_fu, fu_conf, _ = fu_state
+            conf = float(max(fu_conf, 0.55 if pip_fu else 0.35))
+        else:
+            conf = 0.85
+
+        async with AsyncSessionLocal() as db:
+            msg_svc = MessageService(db)
+            await msg_svc.save_user_message(
+                session_id=session_uuid_for_save,
+                content=query,
+                intent=pip_intent,
+                is_followup=pip_fu,
+                confidence=conf,
+                retrieval_topic=pip_topic,
+            )
+
     results = retrieval_payload["final_results"]
     response_mode = retrieval_payload.get("response_mode", "retrieval")
     logger.info(
-        "[retrieval] done mode=%s intent=%s language=%s queries=%d results=%d",
+        "[retrieval] done mode=%s intent=%s topic=%s followup=%s language=%s queries=%d results=%d",
         response_mode,
         retrieval_payload["intent"],
+        retrieval_payload.get("retrieval_topic"),
+        retrieval_payload.get("is_dialog_followup"),
         retrieval_payload["language"],
         len(retrieval_payload["planned_queries"]),
         len(results),
@@ -211,6 +242,8 @@ async def run_vector_search(
                     model=openai_model,
                     intent=retrieval_payload["intent"],
                     language=retrieval_payload["language"],
+                    retrieval_topic=retrieval_payload.get("retrieval_topic"),
+                    is_dialog_followup=bool(retrieval_payload.get("is_dialog_followup", False)),
                 )
                 answer_meta = {"mode": "openai", "model": openai_model}
             except Exception as e:
@@ -290,6 +323,8 @@ async def run_vector_search(
         "count": len(results),
         "retrieval": {
             "intent": retrieval_payload["intent"],
+            "retrieval_topic": retrieval_payload.get("retrieval_topic"),
+            "is_dialog_followup": retrieval_payload.get("is_dialog_followup"),
             "language": retrieval_payload["language"],
             "planned_queries": retrieval_payload["planned_queries"],
             "llm_context": retrieval_payload["llm_context"],

@@ -33,6 +33,7 @@ class MessageRepository:
         intent: str | None = None,
         is_followup: bool | None = None,
         confidence: float | None = None,
+        retrieval_topic: str | None = None,
     ) -> Message:
         """메시지를 저장하고, 필요 시 메타도 함께 저장한다."""
 
@@ -46,9 +47,14 @@ class MessageRepository:
         await self.session.flush()
 
         if intent is not None and is_followup is not None and confidence is not None:
+            # --- 단계: 사용자 메타에 검색 축(retrieval_topic)을 함께 기록한다 ---
+            rt = (retrieval_topic or "all").strip().lower()
+            if rt not in {"company", "product", "all"}:
+                rt = "all"
             meta = MessageMeta(
                 message_id=msg.id,
                 intent=intent,
+                retrieval_topic=rt,
                 is_followup=bool(is_followup),
                 confidence=float(confidence),
             )

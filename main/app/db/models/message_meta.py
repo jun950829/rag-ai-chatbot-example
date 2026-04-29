@@ -1,8 +1,9 @@
 """메시지 메타(message_meta) ORM 모델.
 
 목적:
- - 추론 결과(의도, follow-up 여부, confidence)를 저장해
+ - 추론 결과(라우팅 intent, 검색 축 retrieval_topic, follow-up 여부, confidence)를 저장해
    재처리/분석/캐싱에 활용한다.
+ - ``retrieval_topic`` 은 벡터 검색 시 회사/제품 테이블 스코프(company|product|all)를 기록한다.
 """
 
 from __future__ import annotations
@@ -36,6 +37,10 @@ class MessageMeta(Base):
 
     # 의도 라벨 (예: company/product/followup/general 등)
     intent: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # --- 검색 축: 벡터 검색 시 회사/제품 테이블 스코프 (company|product|all) ---
+    # intent가 followup이어도 본문에 '제품' 등이 있으면 product로 저장될 수 있다.
+    retrieval_topic: Mapped[str] = mapped_column(Text, nullable=False, default="all")
 
     # follow-up 여부
     is_followup: Mapped[bool] = mapped_column(nullable=False, default=False)

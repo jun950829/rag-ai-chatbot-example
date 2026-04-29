@@ -5,9 +5,12 @@ from typing import Any
 
 from app.rag.retrieval.memory import ConversationMemory
 
+# --- 단계 0: 라벨 집합 정의 (라우팅용 intent + 벡터 스코프용 retrieval_topic) ---
 # 검색 의도는 더 이상 new_company가 아니라 company/product로 분기한다.
 INTENT_LABELS = {"greeting", "followup", "company", "product", "general", "not_related"}
 LANGUAGE_LABELS = {"ko", "en"}
+# retrieval_topic: DB·오케스트레이터에서 entity_scope로 매핑한다.
+RETRIEVAL_TOPIC_LABELS = frozenset({"company", "product", "all"})
 
 _KOREAN_RE = re.compile(r"[가-힣]")
 _ENGLISH_RE = re.compile(r"[A-Za-z]")
@@ -119,6 +122,60 @@ def _looks_like_greeting(text: str) -> bool:
     return any(word in text for word in _GREETING_WORDS)
 
 
+def infer_retrieval_topic_from_text(normalized_message: str) -> str:
+    """--- 단계: 정규화된 본문만으로 검색 축(제품/회사/전체)을 키워드로 추정한다.
+
+    follow-up 여부와 무관하게 먼저 호출해, '그 업체의 대표 제품'처럼
+    후행 질문에서도 제품 쪽 스코프를 잡을 수 있게 한다.
+    (제품·회사 힌트가 동시에 있으면 기존 규칙대로 제품을 우선한다.)
+    """
+    n = _norm_text(normalized_message)
+    if any(word in n for word in _PRODUCT_HINTS):
+        return "product"
+    if any(word in n for word in _COMPANY_HINTS):
+        return "company"
+    return "all"
+
+
+def _normalize_retrieval_topic(value: str | None) -> str:
+    t = (value or "all").strip().lower()
+    return t if t in RETRIEVAL_TOPIC_LABELS else "all"
+
+
+def _parse_openai_intent_topic_line(raw: str) -> tuple[str | None, str | None]:
+    """--- 단계: OpenAI 응답 한 줄에서 intent=…;topic=… 형식을 파싱한다."""
+    text = (raw or "").strip().lower()
+    intent_out: str | None = None
+    topic_out: str | None = None
+    for part in re.split(r"[;\n]+", text):
+        part = part.strip()
+        if part.startswith("intent="):
+            intent_out = part.split("=", 1)[1].strip()
+        elif part.startswith("topic="):
+            topic_out = part.split("=", 1)[1].strip()
+    return intent_out, topic_out
+
+
+def _build_intent_meta(
+    *,
+    source: str,
+    retrieval_topic: str | None,
+    is_dialog_followup: bool,
+    followup_reason: str = "",
+    model: str | None = None,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "source": source,
+        "is_dialog_followup": bool(is_dialog_followup),
+        "retrieval_topic": _normalize_retrieval_topic(retrieval_topic) if retrieval_topic is not None else None,
+    }
+    if followup_reason:
+        meta["followup_reason"] = followup_reason
+    if model:
+        meta["model"] = model
+    return meta
+
+
 async def classify_intent_v2(
     *,
     message: str,
@@ -127,23 +184,58 @@ async def classify_intent_v2(
     model: str = "gpt-4o-mini",
     memory: ConversationMemory | None = None,
 ) -> tuple[str, dict[str, Any]]:
+    """--- 전체 흐름: 인사/무관 제외 → 검색축 추정 → 후행 질문 여부 → 라우팅 intent 결정.
+
+    반환 dict에는 항상 ``is_dialog_followup``, 검색 경로에서는 ``retrieval_topic``(company|product|all)이 포함된다.
+    """
     n = _norm_text(message)
+
+    # --- 1단계: 인사 (비검색, topic 없음) ---
     if _looks_like_greeting(n):
-        return "greeting", {"source": "heuristic_greeting"}
+        return "greeting", _build_intent_meta(
+            source="heuristic_greeting",
+            retrieval_topic=None,
+            is_dialog_followup=False,
+        )
 
-    is_followup, reason = _is_followup_query(n, has_history=has_history, memory=memory)
-    if is_followup:
-        return "followup", {"source": f"heuristic_followup_{reason}"}
-
+    # --- 2단계: 전시와 무관한 주제 (비검색) ---
     if any(word in n for word in _NOT_RELATED_HINTS):
-        return "not_related", {"source": "heuristic_not_related"}
-    # product/company는 키워드로 우선 분기한다. (둘 다 걸리면 product를 우선)
-    if any(word in n for word in _PRODUCT_HINTS):
-        return "product", {"source": "heuristic_product"}
-    if any(word in n for word in _COMPANY_HINTS):
-        return "company", {"source": "heuristic_company"}
+        return "not_related", _build_intent_meta(
+            source="heuristic_not_related",
+            retrieval_topic=None,
+            is_dialog_followup=False,
+        )
 
-    # 애매하면 LLM fallback (요구사항: general/애매한 경우에만 사용)
+    # --- 3단계: 본문 키워드로 검색 축 추정 (후행 여부와 독립) ---
+    retrieval_topic = infer_retrieval_topic_from_text(n)
+
+    # --- 4단계: 대화상 후행 질문인지 (대명사·짧은 질문·연속어 등) ---
+    is_dialog_followup, fu_reason = _is_followup_query(n, has_history=has_history, memory=memory)
+
+    # --- 5단계: 후행이면 라우팅 intent는 followup으로 고정, 검색 축은 3단계 결과를 그대로 사용 ---
+    if is_dialog_followup:
+        return "followup", _build_intent_meta(
+            source=f"heuristic_followup_{fu_reason}",
+            retrieval_topic=retrieval_topic,
+            is_dialog_followup=True,
+            followup_reason=fu_reason,
+        )
+
+    # --- 6단계: 신규 검색형 — 키워드로 company/product (후행 아님) ---
+    if retrieval_topic == "product":
+        return "product", _build_intent_meta(
+            source="heuristic_product",
+            retrieval_topic="product",
+            is_dialog_followup=False,
+        )
+    if retrieval_topic == "company":
+        return "company", _build_intent_meta(
+            source="heuristic_company",
+            retrieval_topic="company",
+            is_dialog_followup=False,
+        )
+
+    # --- 7단계: 애매하면 OpenAI 보조 (intent + topic 동시에 요청) ---
     if openai_client is not None:
         try:
             resp = await openai_client.chat.completions.create(
@@ -153,25 +245,68 @@ async def classify_intent_v2(
                         "role": "system",
                         "content": (
                             "너는 전시 RAG 시스템의 intent classifier다.\n"
-                            "가능한 라벨은: company, product, followup, general, not_related.\n"
-                            "반드시 라벨 한 단어만 출력해라."
+                            "routing intent는 다음 중 하나: company, product, followup, general, not_related.\n"
+                            "검색 축 topic은 다음 중 하나: company, product, all.\n"
+                            "반드시 한 줄만 출력: intent=<라벨>;topic=<topic>\n"
+                            "예: intent=followup;topic=product"
                         ),
                     },
-                    {"role": "user", "content": f"질문: {message}\n라벨만 출력:"},
+                    {"role": "user", "content": f"질문: {message}\n한 줄 출력:"},
                 ],
             )
-            out = ((resp.choices[0].message.content) or "").strip().lower()
-            if out in INTENT_LABELS:
-                return out, {"source": "openai_fallback", "model": model}
+            raw_line = ((resp.choices[0].message.content) or "").strip()
+            parsed_intent, parsed_topic = _parse_openai_intent_topic_line(raw_line)
+            if parsed_intent in INTENT_LABELS:
+                # --- topic 보정: 라우팅이 company/product면 검색축도 동일하게 맞춘다 ---
+                rt_now = (
+                    _normalize_retrieval_topic(parsed_topic)
+                    if parsed_topic
+                    else infer_retrieval_topic_from_text(n)
+                )
+                if parsed_intent in {"company", "product"}:
+                    rt_now = parsed_intent
+                meta = _build_intent_meta(
+                    source="openai_fallback",
+                    retrieval_topic=rt_now,
+                    is_dialog_followup=parsed_intent == "followup",
+                    model=model,
+                )
+                return parsed_intent, meta
+            # --- 7-b: 한 단어만 온 경우(구형 프롬프트 호환) ---
+            single = raw_line.lower().split()[0] if raw_line else ""
+            if single in INTENT_LABELS:
+                rt = infer_retrieval_topic_from_text(n)
+                if single in {"company", "product"}:
+                    rt = single
+                return single, _build_intent_meta(
+                    source="openai_fallback",
+                    retrieval_topic=rt,
+                    is_dialog_followup=single == "followup",
+                    model=model,
+                )
         except Exception:
-            # fallback 실패는 general로 처리 (성능/안정성 우선)
             pass
 
-    return "general", {"source": "heuristic_general"}
+    # --- 8단계: 최종 fallback → 일반 대화 ---
+    return "general", _build_intent_meta(
+        source="heuristic_general",
+        retrieval_topic="all",
+        is_dialog_followup=False,
+    )
 
 
 def _intent_meta_used_openai(intent_meta: dict[str, Any]) -> bool:
     return str(intent_meta.get("source", "")).startswith("openai")
+
+
+def entity_scope_from_retrieval_topic(retrieval_topic: str | None) -> str:
+    """--- 단계: retrieval_topic 문자열을 semantic_search의 entity_scope 인자로 변환한다."""
+    rt = _normalize_retrieval_topic(retrieval_topic)
+    if rt == "company":
+        return "company"
+    if rt == "product":
+        return "product"
+    return "all"
 
 
 def build_intent_heuristic_answer(*, intent: str, language: str, query: str) -> str:
@@ -194,6 +329,7 @@ def build_intent_heuristic_answer(*, intent: str, language: str, query: str) -> 
 __all__ = [
     "INTENT_LABELS",
     "LANGUAGE_LABELS",
+    "RETRIEVAL_TOPIC_LABELS",
     "_intent_meta_used_openai",
     "_norm_text",
     "_strip_request_scaffolding",
@@ -202,4 +338,6 @@ __all__ = [
     "classify_intent_v2",
     "detect_language",
     "build_intent_heuristic_answer",
+    "infer_retrieval_topic_from_text",
+    "entity_scope_from_retrieval_topic",
 ]

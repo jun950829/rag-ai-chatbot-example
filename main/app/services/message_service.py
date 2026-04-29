@@ -101,9 +101,11 @@ class MessageService:
         intent: str,
         is_followup: bool,
         confidence: float,
+        retrieval_topic: str | None = None,
     ) -> None:
         """사용자 메시지를 DB에 저장하고 세션 last_message_at 갱신."""
 
+        # --- 단계: 파이프라인에서 산출한 검색 축(retrieval_topic)을 message_meta에 함께 저장한다 ---
         msg = await self.messages.save_message(
             session_id=session_id,
             role="user",
@@ -111,6 +113,7 @@ class MessageService:
             intent=intent,
             is_followup=is_followup,
             confidence=confidence,
+            retrieval_topic=retrieval_topic,
         )
         await self.conversations.update_last_message_at(session_id, last_message_at=msg.created_at)
         await self.db.commit()
