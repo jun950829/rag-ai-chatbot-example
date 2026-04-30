@@ -2,9 +2,11 @@
 
 흐름 요약:
 1. ``session_id`` 가 있으면 Async DB에서 ``ConversationMemory`` 적재·히스토리 여부 계산
-2. ``execute_retrieval_pipeline`` — 의도/검색축 분류 → (검색형이면) 쿼리 계획 → pgvector 다중 쿼리 검색 → RRF·컷오프
+2. ``execute_retrieval_pipeline`` — 의도/검색축 분류(선택적 OpenAI) → 휴리스틱 다중 쿼리 계획 → pgvector 검색 → RRF·컷오프
 3. 세션 모드에서는 **분류·검색이 끝난 뒤** ``MessageService.save_user_message`` 로 intent·``retrieval_topic``·follow-up 메타 저장
 4. 답변: 템플릿 또는 OpenAI (``answer_mode``)
+
+검색 부하·의도 OpenAI 여부는 ``get_settings()`` 및 ``run_vector_search(..., intent_use_openai=..., retrieval_*=...)`` 로 조정.
 
 자세한 구조는 저장소 루트 ``docs/CHATBOT_ARCHITECTURE.md`` 참고.
 """
@@ -17,6 +19,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from app.core.config import get_settings
 from app.rag.pipeline import build_korean_search_answer, format_search_results_for_llm_context
 from app.rag.retrieval.memory import ConversationMemory
 from app.rag.retrieval import RetrievalConfig, execute_retrieval_pipeline
@@ -135,6 +138,10 @@ async def _generate_general_answer_with_openai(
     return ((resp.choices[0].message.content) or "").strip() or "LLM이 빈 답변을 반환했습니다."
 
 
+def _clamp01(x: float) -> float:
+    return max(0.05, min(0.95, float(x)))
+
+
 async def run_vector_search(
     *,
     query: str,
@@ -149,6 +156,14 @@ async def run_vector_search(
     embedding_remote_base_url: str | None,
     memory: ConversationMemory | None = None,
     session_id: str | None = None,
+    intent_use_openai: bool | None = None,
+    retrieval_min_queries: int | None = None,
+    retrieval_max_queries: int | None = None,
+    retrieval_score_cutoff: float | None = None,
+    retrieval_evidence_ratio: float | None = None,
+    retrieval_rrf_k: int | None = None,
+    retrieval_context_limit: int | None = None,
+    retrieval_top_k_per_query: int | None = None,
 ) -> dict[str, Any]:
     if chunk_type not in {"all", "profile", "evidence"}:
         raise ValueError("chunk_type must be one of: all, profile, evidence")
@@ -192,23 +207,49 @@ async def run_vector_search(
             fu_state = (is_fu, fu_conf, fu_meta)
             session_uuid_for_save = sid
 
-    logger.info("[search] retrieval_pipeline ...")
+    st = get_settings()
+    i_openai = st.retrieval_intent_use_openai if intent_use_openai is None else intent_use_openai
+    min_q = st.retrieval_min_queries if retrieval_min_queries is None else int(retrieval_min_queries)
+    max_q = st.retrieval_max_queries if retrieval_max_queries is None else int(retrieval_max_queries)
+    min_q = max(1, min_q)
+    max_q = max(min_q, max_q)
+    sc = float(st.retrieval_score_cutoff if retrieval_score_cutoff is None else retrieval_score_cutoff)
+    er = _clamp01(float(st.retrieval_evidence_ratio if retrieval_evidence_ratio is None else retrieval_evidence_ratio))
+    rk = max(1, int(st.retrieval_rrf_k if retrieval_rrf_k is None else retrieval_rrf_k))
+    cl = max(1, int(st.retrieval_context_limit if retrieval_context_limit is None else retrieval_context_limit))
+    tkpq_raw = st.retrieval_top_k_per_query if retrieval_top_k_per_query is None else retrieval_top_k_per_query
+    tkpq = max(6, int(top_k)) if tkpq_raw is None else max(1, int(tkpq_raw))
+
+    tuning_meta = {
+        "intent_use_openai": i_openai,
+        "min_queries": min_q,
+        "max_queries": max_q,
+        "score_cutoff": sc,
+        "evidence_ratio": er,
+        "rrf_k": rk,
+        "context_limit": cl,
+        "top_k_per_query": tkpq,
+        "final_top_k": max(1, int(top_k)),
+    }
+    logger.info("[search] retrieval_pipeline ... tuning=%s", tuning_meta)
+
     retrieval_payload = await execute_retrieval_pipeline(
         query,
         config=RetrievalConfig(
             model_id=model_id,
             device=device or None,
-            top_k_per_query=max(6, top_k),
-            final_top_k=max(1, top_k),
-            score_cutoff=0.22,
-            evidence_ratio=0.6,
-            min_queries=3,
-            max_queries=5,
-            rrf_k=60,
-            context_limit=6,
+            top_k_per_query=tkpq,
+            final_top_k=max(1, int(top_k)),
+            score_cutoff=sc,
+            evidence_ratio=er,
+            min_queries=min_q,
+            max_queries=max_q,
+            rrf_k=rk,
+            context_limit=cl,
         ),
         openai_client=openai_client,
         intent_model=openai_model,
+        intent_use_openai=i_openai,
         embedding_remote_base_url=embedding_remote_base_url,
         has_history=has_history,
         memory=db_memory or _DEFAULT_MEMORY,
@@ -379,6 +420,7 @@ async def run_vector_search(
             "response_mode": response_mode,
             "embedding_remote_base_url": (embedding_remote_base_url or "").strip() or None,
             "openai_usage_summary": openai_usage,
+            "tuning_applied": tuning_meta,
         },
         "answer_korean": answer_korean,
         "answer_meta": answer_meta,

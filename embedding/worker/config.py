@@ -20,8 +20,19 @@ class WorkerSettings(BaseSettings):
     max_retry: int = 3
     retrieval_model_id: str = "Qwen/Qwen3-Embedding-0.6B"
     retrieval_device: str = "cpu"
-    retrieval_top_k: int = 8
+    retrieval_top_k: int = 6
     openai_model: str = "gpt-4o-mini"
+
+    # 챗봇 → API 검색 시 Form으로 전달 (미설정 시 API 쪽 환경 기본)
+    # retrieval_intent_use_openai: bool = True
+    retrieval_intent_use_openai: bool = False
+    retrieval_min_queries: int = 2
+    retrieval_max_queries: int = 2
+    retrieval_score_cutoff: float = 0.25
+    retrieval_evidence_ratio: float = 0.45
+    retrieval_rrf_k: int = 60
+    retrieval_context_limit: int = 4
+    retrieval_top_k_per_query: int | None = 4
 
 
 settings = WorkerSettings()

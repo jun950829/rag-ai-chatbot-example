@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     default_embed_dim: int = 1536
     default_retrieval_top_k: int = 5
 
+    # --- RAG 검색 부하·의도 OpenAI (API 폼 미전달 시 기본값) ---
+    retrieval_intent_use_openai: bool = True
+    retrieval_min_queries: int = 2
+    retrieval_max_queries: int = 2
+    retrieval_score_cutoff: float = 0.25
+    retrieval_evidence_ratio: float = 0.45
+    retrieval_rrf_k: int = 60
+    retrieval_context_limit: int = 4
+    # 쿼리당 상한(속도 우선 기본값)
+    retrieval_top_k_per_query: int | None = 4
+
     # Base URL of the local embedding inference server (host machine), e.g. http://host.docker.internal:8765
     embedding_service_url: str = ""
 

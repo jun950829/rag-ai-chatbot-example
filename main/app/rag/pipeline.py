@@ -22,6 +22,7 @@ import os
 import sys
 import uuid
 from urllib import request as urllib_request
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from dataclasses import dataclass
 from functools import lru_cache
@@ -685,6 +686,44 @@ def _embed_query_via_http(
     return [float(x) for x in vec]
 
 
+def _embed_queries_via_http(
+    base_url: str,
+    queries: list[str],
+    *,
+    model_id: str,
+    device: str | None,
+    timeout_sec: int = 120,
+) -> list[list[float]]:
+    """별도 임베딩 서비스 `/v1/embed/queries`로 질의 여러 줄을 한 번에 벡터화 (서버 단일 배치)."""
+    if not queries:
+        return []
+    endpoint = base_url.rstrip("/") + "/v1/embed/queries"
+    body = urlencode(
+        {
+            "queries": json.dumps(queries, ensure_ascii=False),
+            "model_id": model_id,
+            "device": (device or "").strip(),
+        }
+    ).encode("utf-8")
+    req = urllib_request.Request(
+        endpoint,
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    rows = payload.get("embeddings")
+    if not isinstance(rows, list) or len(rows) != len(queries):
+        raise RuntimeError("remote embed/queries returned invalid payload")
+    out: list[list[float]] = []
+    for row in rows:
+        if not isinstance(row, list) or not row:
+            raise RuntimeError("remote embed/queries returned empty row")
+        out.append([float(x) for x in row])
+    return out
+
+
 def embed_query_text(
     query: str,
     *,
@@ -705,6 +744,34 @@ def embed_query_text(
     return vectors[0]
 
 
+def embed_queries_text(
+    queries: list[str],
+    *,
+    model_id: str,
+    device: str | None,
+    remote_base_url: str | None = None,
+) -> list[list[float]]:
+    """RAG 다중 쿼리용: 순서 유지, 원격이면 한 HTTP로 배치, 없으면 로컬 `_embed_texts` 배치."""
+    cleaned = [(q or "").strip() for q in queries]
+    if not cleaned:
+        return []
+    base = (remote_base_url or "").strip() or os.environ.get("EMBEDDING_SERVICE_URL", "").strip()
+    if base:
+        try:
+            return _embed_queries_via_http(base, cleaned, model_id=model_id, device=device)
+        except HTTPError as e:
+            if e.code == 404:
+                return [
+                    _embed_query_via_http(base, q, model_id=model_id, device=device) for q in cleaned
+                ]
+            raise
+    n = len(cleaned)
+    vectors = _embed_texts(cleaned, model_id=model_id, device=device, batch_size=min(32, max(1, n)))
+    if len(vectors) != n:
+        raise RuntimeError("failed to embed queries batch")
+    return vectors
+
+
 def search_embedding_tables(
     *,
     query_embedding: list[float],
@@ -713,6 +780,7 @@ def search_embedding_tables(
     lang: str,
     chunk_type: str,
     entity_scope: str = "all",
+    per_table_limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """질의 벡터와 코사인 거리(`<=>`)로 여러 임베딩 테이블을 UNION 검색해 상위 `top_k` 행을 반환."""
     top_k = max(1, int(top_k))
@@ -795,7 +863,11 @@ def search_embedding_tables(
     LIMIT :top_k
     """
 
-    per_table_limit = max(top_k, 50)
+    if per_table_limit is None:
+        # UNION 브랜치마다 상한이 너무 크면(예: 50 고정) pgvector 정렬 비용이 커진다.
+        per_table_limit = min(max(top_k * 5, 14), 36)
+    else:
+        per_table_limit = max(1, int(per_table_limit))
     params = {
         "embedding": _vector_literal(query_embedding),
         "per_table_limit": per_table_limit,

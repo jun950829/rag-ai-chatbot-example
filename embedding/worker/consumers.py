@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from time import perf_counter
 from datetime import datetime, timezone
 from typing import Any
 
@@ -52,10 +53,29 @@ async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, m
         "chunk_type": "all",
         "answer_mode": "openai",
         "openai_model": settings.openai_model,
+        "intent_use_openai": "true" if settings.retrieval_intent_use_openai else "false",
+        "retrieval_min_queries": str(settings.retrieval_min_queries),
+        "retrieval_max_queries": str(settings.retrieval_max_queries),
+        "retrieval_score_cutoff": str(settings.retrieval_score_cutoff),
+        "retrieval_evidence_ratio": str(settings.retrieval_evidence_ratio),
+        "retrieval_rrf_k": str(settings.retrieval_rrf_k),
+        "retrieval_context_limit": str(settings.retrieval_context_limit),
     }
+    if settings.retrieval_top_k_per_query is not None:
+        form_data["retrieval_top_k_per_query"] = str(settings.retrieval_top_k_per_query)
     logger.info("[worker] retrieval POST %s session_id=%s", endpoint, (session_id or "")[:40])
+    t_call = perf_counter()
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(endpoint, data=form_data)
+    call_ms = int((perf_counter() - t_call) * 1000)
+    await _trace(
+        redis,
+        request_id=request_id,
+        stage="retrieval_api_wait",
+        status="done",
+        detail=f"/tools/embedding/api/search 응답 대기 {call_ms}ms",
+        data={"http_elapsed_ms": call_ms},
+    )
     try:
         payload = response.json() if response.content else {}
     except json.JSONDecodeError:
@@ -81,13 +101,16 @@ async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, m
                 step = s.get("step")
                 title = str(s.get("title", "") or "-")
                 detail = str(s.get("detail", "") or "")
+                data = s.get("data") if isinstance(s.get("data"), dict) else {}
+                step_ms = data.get("step_elapsed_ms")
+                extra = f" | step_elapsed={step_ms}ms" if isinstance(step_ms, int) else ""
                 await _trace(
                     redis,
                     request_id=request_id,
                     stage=f"retrieval_step_{step}",
                     status="done",
-                    detail=f"{title} · {detail}",
-                    data={"step": step, "title": title, "detail": detail},
+                    detail=f"{title} · {detail}{extra}",
+                    data={"step": step, "title": title, "detail": detail, **data},
                 )
     except Exception:
         # 로깅 실패는 본 흐름을 막지 않는다.

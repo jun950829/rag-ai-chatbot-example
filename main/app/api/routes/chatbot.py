@@ -120,7 +120,7 @@ async def stream_chat(request_id: str) -> StreamingResponse:
             for _ in range(600):
                 raw = await redis.lpop(stream_key)
                 if not raw:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.05)
                     continue
                 payload = json.loads(raw)
                 event = payload.get("event", "message")

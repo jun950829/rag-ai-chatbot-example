@@ -17,11 +17,12 @@ async def generate_search_plan_v2(
     min_queries: int,
     max_queries: int,
 ) -> tuple[list[str], dict[str, Any]]:
-    """--- 단계: 다중 임베딩 검색용 쿼리 문자열 목록을 만든다.
+    """다중 임베딩 검색용 쿼리 문자열 목록 (휴리스틱 전용, LLM 미사용).
 
     - ``intent``: 라우팅 라벨(followup/company/product 등). 플래너 확장 분기 참고용.
     - ``retrieval_topic``: 실제 검색 축(회사/제품/전체). follow-up이어도 제품이면 product 확장을 탄다.
     - ``is_dialog_followup``: 직전 맥락을 덧붙이는 보조 쿼리를 넣을지 여부.
+    - ``openai_client`` / ``openai_model``: 시그니처 호환용(현재 본문에서 호출하지 않음).
     """
     del openai_client, openai_model
     raw = _norm_text(message)

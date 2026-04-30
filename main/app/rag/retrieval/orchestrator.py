@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from typing import Any
 
 from app.rag.retrieval.intent import (
@@ -31,6 +32,7 @@ async def execute_retrieval_pipeline(
     has_history: bool = False,
     openai_client: Any | None = None,
     intent_model: str = "gpt-4o-mini",
+    intent_use_openai: bool = True,
     embedding_remote_base_url: str | None = None,
     memory: ConversationMemory | None = None,
 ) -> dict[str, Any]:
@@ -40,8 +42,27 @@ async def execute_retrieval_pipeline(
     if not normalized_query:
         raise ValueError("query is empty")
     step_logs: list[dict[str, Any]] = []
-    append_step(
-        step_logs,
+    t0 = perf_counter()
+    t_prev = t0
+
+    def _append_step(*, step: int, title: str, detail: str, data: dict[str, Any] | None = None) -> None:
+        nonlocal t_prev
+        now = perf_counter()
+        step_ms = int((now - t_prev) * 1000)
+        total_ms = int((now - t0) * 1000)
+        payload = dict(data or {})
+        payload["step_elapsed_ms"] = step_ms
+        payload["pipeline_elapsed_ms"] = total_ms
+        append_step(
+            step_logs,
+            step=step,
+            title=title,
+            detail=f"{detail} ({step_ms}ms, total={total_ms}ms)",
+            data=payload,
+        )
+        t_prev = now
+
+    _append_step(
         step=0,
         title="입력 정규화",
         detail="공백/특수문자를 정리해 의도분류·플래너 공통 입력으로 변환",
@@ -50,11 +71,12 @@ async def execute_retrieval_pipeline(
     if memory is not None:
         memory.add("user", normalized_query)
 
-    logger.info("[retrieval][step1] intent classification started")
+    logger.info("[retrieval][step1] intent classification started (intent_use_openai=%s)", intent_use_openai)
+    intent_client = openai_client if intent_use_openai else None
     intent, intent_meta = await classify_intent_v2(
         message=normalized_query,
         has_history=has_history,
-        openai_client=openai_client,
+        openai_client=intent_client,
         model=intent_model,
         memory=memory,
     )
@@ -77,8 +99,7 @@ async def execute_retrieval_pipeline(
     classification_source = str(intent_meta.get("source", "unknown"))
     used_openai = _intent_meta_used_openai(intent_meta)
     classification_path_text = "OpenAI 기반 분류" if used_openai else "휴리스틱 분류"
-    append_step(
-        step_logs,
+    _append_step(
         step=1,
         title="의도 분류",
         detail=(
@@ -92,7 +113,8 @@ async def execute_retrieval_pipeline(
             "query": normalized_query,
             "classification_meta": intent_meta,
             "openai_used_for_intent": used_openai,
-            "intent_model": intent_model if openai_client is not None else None,
+            "intent_model": intent_model if intent_client is not None else None,
+            "intent_use_openai_param": intent_use_openai,
         },
     )
 
@@ -101,7 +123,7 @@ async def execute_retrieval_pipeline(
     if language not in LANGUAGE_LABELS:
         language = "ko"
     logger.info("[retrieval][step2] language=%s", language)
-    append_step(step_logs, step=2, title="언어 감지", detail=f"입력 언어를 '{language}'로 판정", data={"language": language})
+    _append_step(step=2, title="언어 감지", detail=f"입력 언어를 '{language}'로 판정", data={"language": language})
 
     openai_present = openai_client is not None
     logger.info("[retrieval][step3] query planning started")
@@ -119,8 +141,7 @@ async def execute_retrieval_pipeline(
         }
         planned_queries: list[str] = []
         logger.info("[retrieval][step3] query planning skipped intent=%s", intent)
-        append_step(
-            step_logs,
+        _append_step(
             step=3,
             title="쿼리 계획 생략",
             detail="비검색 의도로 OpenAI 쿼리 플래너·다중 쿼리 생성을 건너뜀",
@@ -142,8 +163,7 @@ async def execute_retrieval_pipeline(
         )
         logger.info("[retrieval][step3] planned_queries=%s", planned_queries)
         planner_src = str((planning_meta.get("planner_meta") or {}).get("source", ""))
-        append_step(
-            step_logs,
+        _append_step(
             step=3,
             title="쿼리 계획",
             detail=f"{len(planned_queries)}개 집중 쿼리 생성",
@@ -159,8 +179,7 @@ async def execute_retrieval_pipeline(
 
     if intent in {"greeting", "not_related", "general"}:
         heuristic_answer = build_intent_heuristic_answer(intent=intent, language=language, query=normalized_query)
-        append_step(
-            step_logs,
+        _append_step(
             step=4,
             title="검색 생략",
             detail=f"의도 '{intent}'로 판단되어 다중 쿼리 검색을 수행하지 않음",
@@ -205,8 +224,7 @@ async def execute_retrieval_pipeline(
     for bucket in searches:
         rows = bucket["results"]
         query_summaries.append({"query": bucket["query"], "count": len(rows), "top_preview": [r.get("content", "")[:80] for r in rows[:2]]})
-    append_step(
-        step_logs,
+    _append_step(
         step=4,
         title="의미 검색",
         detail="쿼리별 profile/evidence 검색 수행",
@@ -214,8 +232,7 @@ async def execute_retrieval_pipeline(
     )
 
     fused = rrf_fuse(searches, rrf_k=cfg.rrf_k)
-    append_step(
-        step_logs,
+    _append_step(
         step=5,
         title="다중 쿼리 융합 (RRF)",
         detail=f"RRF로 {len(fused)}개 후보 생성",
@@ -227,8 +244,7 @@ async def execute_retrieval_pipeline(
         final_top_k=cfg.final_top_k,
         context_limit=cfg.context_limit,
     )
-    append_step(
-        step_logs,
+    _append_step(
         step=6,
         title="컷오프 + 컨텍스트 조립",
         detail=f"score_cutoff={cfg.score_cutoff} 적용 후 {len(final_results)}개 결과 유지",

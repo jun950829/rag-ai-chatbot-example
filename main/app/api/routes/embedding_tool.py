@@ -32,6 +32,38 @@ logger = logging.getLogger(__name__)
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
 
 
+def _form_optional_bool(s: str | None) -> bool | None:
+    """빈 값·default → None(환경 설정값 사용). true/false 문자열 파싱."""
+    if s is None:
+        return None
+    t = str(s).strip().lower()
+    if t in ("", "default", "inherit"):
+        return None
+    if t in ("1", "true", "yes", "on"):
+        return True
+    if t in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def _form_optional_int(label: str, s: str | None) -> int | None:
+    if s is None or not str(s).strip():
+        return None
+    try:
+        return int(str(s).strip(), 10)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"{label}는 정수여야 합니다.") from e
+
+
+def _form_optional_float(label: str, s: str | None) -> float | None:
+    if s is None or not str(s).strip():
+        return None
+    try:
+        return float(str(s).strip())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"{label}는 숫자여야 합니다.") from e
+
+
 def _embedding_base(settings) -> str:
     base = (settings.embedding_service_url or "").strip().rstrip("/")
     if not base:
@@ -151,6 +183,14 @@ async def embedding_tool_search(
     chunk_type: str = Form(default="all"),
     answer_mode: str = Form(default="template"),
     openai_model: str = Form(default="gpt-5-mini"),
+    intent_use_openai: str | None = Form(default=None),
+    retrieval_min_queries: str | None = Form(default=None),
+    retrieval_max_queries: str | None = Form(default=None),
+    retrieval_score_cutoff: str | None = Form(default=None),
+    retrieval_evidence_ratio: str | None = Form(default=None),
+    retrieval_rrf_k: str | None = Form(default=None),
+    retrieval_context_limit: str | None = Form(default=None),
+    retrieval_top_k_per_query: str | None = Form(default=None),
 ) -> JSONResponse:
     if not (query or "").strip():
         raise HTTPException(status_code=400, detail="검색어가 비어 있습니다.")
@@ -169,6 +209,14 @@ async def embedding_tool_search(
             openai_base_url=settings.openai_base_url,
             embedding_remote_base_url=remote,
             session_id=session_id,
+            intent_use_openai=_form_optional_bool(intent_use_openai),
+            retrieval_min_queries=_form_optional_int("retrieval_min_queries", retrieval_min_queries),
+            retrieval_max_queries=_form_optional_int("retrieval_max_queries", retrieval_max_queries),
+            retrieval_score_cutoff=_form_optional_float("retrieval_score_cutoff", retrieval_score_cutoff),
+            retrieval_evidence_ratio=_form_optional_float("retrieval_evidence_ratio", retrieval_evidence_ratio),
+            retrieval_rrf_k=_form_optional_int("retrieval_rrf_k", retrieval_rrf_k),
+            retrieval_context_limit=_form_optional_int("retrieval_context_limit", retrieval_context_limit),
+            retrieval_top_k_per_query=_form_optional_int("retrieval_top_k_per_query", retrieval_top_k_per_query),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

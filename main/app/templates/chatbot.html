@@ -107,6 +107,14 @@
       .trace-item.done { border-left-color: #16a34a; }
       .trace-item.error { border-left-color: #dc2626; }
       .trace-meta { color: #475569; margin-bottom: 2px; }
+      .trace-metrics { margin-top: 10px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+      .trace-metrics h3 { margin: 0 0 8px; font-size: 12px; color: #0f172a; }
+      .trace-metrics-table-wrap { max-height: 190px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+      .trace-metrics table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+      .trace-metrics th, .trace-metrics td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; text-align: left; vertical-align: top; }
+      .trace-metrics th { position: sticky; top: 0; background: #f8fafc; color: #334155; z-index: 1; }
+      .trace-metrics td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .trace-metrics-empty { font-size: 12px; color: #64748b; padding: 6px 2px 2px; }
       .faq-follow-wrap { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
       button.faq-follow-btn {
         border: 1px solid #cbd5e1;
@@ -160,6 +168,11 @@
               <div id="trace-openai" class="trace-log"></div>
             </div>
           </div>
+          <div class="trace-metrics">
+            <h3>단계별 소요시간 (병목 확인)</h3>
+            <div id="trace-metrics-table-wrap" class="trace-metrics-table-wrap"></div>
+            <div id="trace-metrics-empty" class="trace-metrics-empty">아직 처리 데이터가 없습니다.</div>
+          </div>
         </div>
         <form id="chat-form" class="composer">
           <textarea id="message" placeholder="메시지를 입력하세요"></textarea>
@@ -178,6 +191,8 @@
         const traceSearchEl = document.getElementById("trace-search");
         const traceRrfEl = document.getElementById("trace-rrf");
         const traceOpenaiEl = document.getElementById("trace-openai");
+        const traceMetricsWrapEl = document.getElementById("trace-metrics-table-wrap");
+        const traceMetricsEmptyEl = document.getElementById("trace-metrics-empty");
         const catChipsEl = document.getElementById("cat-chips");
         const catStatusEl = document.getElementById("cat-status");
         const catBtns = Array.from(document.querySelectorAll(".cat-btn"));
@@ -195,6 +210,44 @@
           log.appendChild(box);
           log.scrollTop = log.scrollHeight;
           return box;
+        }
+
+        /** FAQ·자유채팅 공통: 봇이 입력하는 듯한 대기 버블 */
+        function showBotTypingPlaceholder() {
+          const loadingBox = document.createElement("div");
+          loadingBox.className = "msg bot";
+          loadingBox.textContent = "답변 준비 중";
+          log.appendChild(loadingBox);
+          log.scrollTop = log.scrollHeight;
+          let dot = 0;
+          const loadingTimer = window.setInterval(function () {
+            dot = (dot + 1) % 4;
+            loadingBox.textContent = "답변 준비 중" + ".".repeat(dot);
+            log.scrollTop = log.scrollHeight;
+          }, 240);
+          return {
+            el: loadingBox,
+            stop: function () {
+              window.clearInterval(loadingTimer);
+            },
+            remove: function () {
+              if (loadingBox.parentNode) loadingBox.remove();
+            },
+            stopAndRemove: function () {
+              this.stop();
+              this.remove();
+            },
+          };
+        }
+
+        function takeNextDisplayChunk(s) {
+          if (!s) return "";
+          if (/^\s/.test(s)) {
+            const m = s.match(/^\s+/);
+            return m ? m[0] : s[0];
+          }
+          const m = s.match(/^[^\s]+/);
+          return m ? m[0] : s[0];
         }
 
         function parseSsePayloadData(raw) {
@@ -320,7 +373,7 @@
         function addFaqAnswerMessage(item, followItems) {
           const answerText = (item.answer_sample || item.answer_question || "저장된 답변이 없습니다.").trim();
           const linkText = (item.links || "").trim();
-          return "A. " + answerText + (linkText ? ("\\n링크: " + linkText) : "");
+          return "A. " + answerText + (linkText ? ("\n링크: " + linkText) : "");
         }
 
         function sleep(ms) {
@@ -328,29 +381,18 @@
         }
 
         async function streamFaqAnswerLikeSearch(item, followItems) {
-          // 1초 정도 로딩 버블을 먼저 보여줘서 일반 채팅 응답 대기감과 유사하게 만든다.
-          const loadingBox = document.createElement("div");
-          loadingBox.className = "msg bot";
-          loadingBox.textContent = "답변 준비 중";
-          log.appendChild(loadingBox);
-          log.scrollTop = log.scrollHeight;
-
-          let dot = 0;
-          const loadingTimer = window.setInterval(() => {
-            dot = (dot + 1) % 4;
-            loadingBox.textContent = "답변 준비 중" + ".".repeat(dot);
-            log.scrollTop = log.scrollHeight;
-          }, 240);
-
+          const load = showBotTypingPlaceholder();
           statusEl.classList.remove("error");
           statusEl.textContent = "FAQ 응답 생성 대기 중...";
           await sleep(1000);
-          window.clearInterval(loadingTimer);
-          loadingBox.remove();
+          load.stopAndRemove();
 
           const botBox = document.createElement("div");
           botBox.className = "msg bot";
-          botBox.textContent = "";
+          const faqTextEl = document.createElement("div");
+          faqTextEl.className = "msg-text";
+          faqTextEl.textContent = "";
+          botBox.appendChild(faqTextEl);
           log.appendChild(botBox);
           log.scrollTop = log.scrollHeight;
 
@@ -359,7 +401,7 @@
           const finalText = addFaqAnswerMessage(item, followItems);
           const tokens = finalText.split(/(\s+)/);
           for (const tk of tokens) {
-            botBox.textContent += tk;
+            faqTextEl.textContent += tk;
             log.scrollTop = log.scrollHeight;
             await sleep(16 + Math.floor(Math.random() * 18));
           }
@@ -435,38 +477,125 @@
           return payload.request_id;
         }
 
-        function streamAnswer(requestId, botBox) {
-          const textEl = botBox.querySelector(".msg-text");
-          return new Promise(function (resolve, reject) {
-            if (!textEl) {
-              reject(new Error("메시지 영역을 찾을 수 없습니다."));
-              return;
+        function streamAnswer(requestId, loadHandle) {
+          const load = loadHandle || showBotTypingPlaceholder();
+          let botBox = null;
+          let textEl = null;
+          let fullText = "";
+          let displayedLen = 0;
+          let drainTimer = null;
+          let doneReceived = false;
+          let settled = false;
+
+          function settleOk() {
+            if (settled) return;
+            settled = true;
+            if (drainTimer) {
+              window.clearInterval(drainTimer);
+              drainTimer = null;
             }
+            resolveFn();
+          }
+
+          function settleErr(err) {
+            if (settled) return;
+            settled = true;
+            if (drainTimer) {
+              window.clearInterval(drainTimer);
+              drainTimer = null;
+            }
+            load.stopAndRemove();
+            rejectFn(err);
+          }
+
+          function tryFinishTyping() {
+            if (!doneReceived) return;
+            if (textEl && displayedLen < fullText.length) return;
+            settleOk();
+          }
+
+          function ensureBotBox() {
+            if (botBox) return;
+            load.stopAndRemove();
+            botBox = document.createElement("div");
+            botBox.className = "msg bot";
+            textEl = document.createElement("div");
+            textEl.className = "msg-text";
+            textEl.textContent = "";
+            botBox.appendChild(textEl);
+            log.appendChild(botBox);
+            log.scrollTop = log.scrollHeight;
+          }
+
+          function startDrainIfNeeded() {
+            if (drainTimer || !textEl) return;
+            drainTimer = window.setInterval(function () {
+              if (!textEl) return;
+              const backlog = fullText.length - displayedLen;
+              const bursts = backlog > 200 ? 6 : backlog > 100 ? 4 : backlog > 40 ? 2 : 1;
+              for (let b = 0; b < bursts && displayedLen < fullText.length; b++) {
+                const rest = fullText.slice(displayedLen);
+                const chunk = takeNextDisplayChunk(rest);
+                displayedLen += chunk.length;
+                textEl.textContent = fullText.slice(0, displayedLen);
+              }
+              log.scrollTop = log.scrollHeight;
+              tryFinishTyping();
+            }, 18);
+          }
+
+          let resolveFn = function () {};
+          let rejectFn = function () {};
+
+          return new Promise(function (resolve, reject) {
+            resolveFn = resolve;
+            rejectFn = reject;
             const es = new EventSource("/stream/" + encodeURIComponent(requestId));
             es.addEventListener("token", function (evt) {
               const piece = parseSsePayloadData(evt.data);
-              textEl.textContent += typeof piece === "string" ? piece : String(piece || "");
-              log.scrollTop = log.scrollHeight;
+              const add = typeof piece === "string" ? piece : String(piece || "");
+              fullText += add;
+              ensureBotBox();
+              statusEl.textContent = "응답을 작성하는 중...";
+              startDrainIfNeeded();
             });
             es.addEventListener("cards", function (evt) {
               const cards = parseSsePayloadData(evt.data);
               if (Array.isArray(cards) && cards.length) {
+                ensureBotBox();
                 renderSuggestionCarousel(botBox, cards);
                 log.scrollTop = log.scrollHeight;
               }
             });
             es.addEventListener("done", function () {
+              doneReceived = true;
               es.close();
-              resolve();
+              if (textEl) {
+                if (displayedLen >= fullText.length) {
+                  settleOk();
+                } else {
+                  startDrainIfNeeded();
+                }
+              } else if (!fullText) {
+                load.stopAndRemove();
+                addMessage("bot", "응답이 없습니다.");
+                settleOk();
+              } else {
+                ensureBotBox();
+                startDrainIfNeeded();
+              }
+              tryFinishTyping();
             });
             es.addEventListener("error", function (evt) {
               es.close();
               const d = parseSsePayloadData(evt.data);
-              reject(new Error(typeof d === "string" ? d : "스트림 오류"));
+              settleErr(new Error(typeof d === "string" ? d : "스트림 오류"));
             });
             es.onerror = function () {
+              if (settled) return;
+              if (doneReceived) return;
               es.close();
-              reject(new Error("SSE 연결이 종료되었습니다."));
+              settleErr(new Error("SSE 연결이 종료되었습니다."));
             };
           });
         }
@@ -486,6 +615,8 @@
           traceSearchEl.innerHTML = "";
           traceRrfEl.innerHTML = "";
           traceOpenaiEl.innerHTML = "";
+          traceMetricsWrapEl.innerHTML = "";
+          traceMetricsEmptyEl.style.display = "block";
           (items || []).forEach(function (item) {
             const stage = String(item.stage || "");
             if (stage === "retrieval_step_4" || stage === "retrieval_step_1" || stage === "retrieval_step_2" || stage === "retrieval_step_3") {
@@ -500,6 +631,42 @@
               _appendTrace(traceSearchEl, item);
             }
           });
+          const metricRows = (items || [])
+            .map(function (item) {
+              const stage = String(item.stage || "");
+              if (!stage.startsWith("retrieval_step_")) return null;
+              const data = (item && typeof item.data === "object" && item.data) ? item.data : {};
+              const step = Number(data.step);
+              const stepElapsed = Number(data.step_elapsed_ms);
+              const totalElapsed = Number(data.pipeline_elapsed_ms);
+              return {
+                step: Number.isFinite(step) ? step : 999,
+                stage: stage,
+                title: String(data.title || item.detail || "-"),
+                stepElapsed: Number.isFinite(stepElapsed) ? stepElapsed : null,
+                totalElapsed: Number.isFinite(totalElapsed) ? totalElapsed : null,
+              };
+            })
+            .filter(Boolean)
+            .sort(function (a, b) { return a.step - b.step; });
+          if (metricRows.length) {
+            traceMetricsEmptyEl.style.display = "none";
+            const table = document.createElement("table");
+            table.innerHTML =
+              "<thead><tr><th>step</th><th>title</th><th>stage</th><th>step ms</th><th>total ms</th></tr></thead>" +
+              "<tbody>" +
+              metricRows.map(function (r) {
+                return "<tr>" +
+                  "<td class='num'>" + r.step + "</td>" +
+                  "<td>" + r.title + "</td>" +
+                  "<td>" + r.stage + "</td>" +
+                  "<td class='num'>" + (r.stepElapsed == null ? "-" : String(r.stepElapsed)) + "</td>" +
+                  "<td class='num'>" + (r.totalElapsed == null ? "-" : String(r.totalElapsed)) + "</td>" +
+                  "</tr>";
+              }).join("") +
+              "</tbody>";
+            traceMetricsWrapEl.appendChild(table);
+          }
           traceSearchEl.scrollTop = traceSearchEl.scrollHeight;
           traceRrfEl.scrollTop = traceRrfEl.scrollHeight;
           traceOpenaiEl.scrollTop = traceOpenaiEl.scrollHeight;
@@ -530,13 +697,15 @@
           sendBtn.disabled = true;
           statusEl.classList.remove("error");
           statusEl.textContent = "요청을 큐에 등록하는 중...";
+          const chatLoad = showBotTypingPlaceholder();
 
-          const botEl = addMessage("bot", "");
           try {
             const requestId = await enqueueChat(text);
             traceSearchEl.innerHTML = "";
             traceRrfEl.innerHTML = "";
             traceOpenaiEl.innerHTML = "";
+            traceMetricsWrapEl.innerHTML = "";
+            traceMetricsEmptyEl.style.display = "block";
             await pollTrace(requestId);
             if (traceTimer) {
               window.clearInterval(traceTimer);
@@ -544,14 +713,13 @@
             traceTimer = window.setInterval(function () {
               pollTrace(requestId).catch(function () {});
             }, 800);
-            statusEl.textContent = "워커 응답을 스트리밍으로 수신 중...";
-            await streamAnswer(requestId, botEl);
+            statusEl.textContent = "워커 응답을 기다리는 중...";
+            await streamAnswer(requestId, chatLoad);
             await pollTrace(requestId);
             statusEl.textContent = "완료";
           } catch (err) {
-            const te = botEl.querySelector(".msg-text");
-            if (te) te.textContent = "오류: " + (err.message || String(err));
-            else botEl.textContent = "오류: " + (err.message || String(err));
+            chatLoad.stopAndRemove();
+            addMessage("bot", "오류: " + (err.message || String(err)));
             statusEl.classList.add("error");
             statusEl.textContent = "오류가 발생했습니다.";
           } finally {

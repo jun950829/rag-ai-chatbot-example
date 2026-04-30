@@ -157,6 +157,46 @@
             <label for="openai_model">OpenAI Model</label>
             <input id="openai_model" type="text" name="openai_model" value="gpt-5-mini" />
           </div>
+          <details class="row" style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;background:#fafbfc;">
+            <summary style="cursor:pointer;font-weight:600;color:#334155;">고급 · 검색 부하 / 의도 OpenAI</summary>
+            <p class="muted" style="margin:8px 0;font-size:12px;">비우면 앱 환경변수 기본값(<code>RETRIEVAL_*</code>)을 씁니다. 다중 쿼리 플래너는 휴리스틱만 사용합니다.</p>
+            <div class="row">
+              <label for="intent_use_openai">의도 분류에 OpenAI</label>
+              <select id="intent_use_openai" name="intent_use_openai">
+                <option value="" selected>(환경 기본)</option>
+                <option value="true">사용</option>
+                <option value="false">사용 안 함</option>
+              </select>
+            </div>
+            <div class="row">
+              <label for="retrieval_min_queries">min_queries</label>
+              <input id="retrieval_min_queries" type="number" name="retrieval_min_queries" min="1" max="20" placeholder="기본" />
+            </div>
+            <div class="row">
+              <label for="retrieval_max_queries">max_queries</label>
+              <input id="retrieval_max_queries" type="number" name="retrieval_max_queries" min="1" max="20" placeholder="기본" />
+            </div>
+            <div class="row">
+              <label for="retrieval_top_k_per_query">top_k_per_query (비우면 max(6, Top K))</label>
+              <input id="retrieval_top_k_per_query" type="number" name="retrieval_top_k_per_query" min="1" max="100" placeholder="자동" />
+            </div>
+            <div class="row">
+              <label for="retrieval_score_cutoff">score_cutoff</label>
+              <input id="retrieval_score_cutoff" type="number" name="retrieval_score_cutoff" step="0.01" min="0" max="1" placeholder="기본" />
+            </div>
+            <div class="row">
+              <label for="retrieval_evidence_ratio">evidence_ratio</label>
+              <input id="retrieval_evidence_ratio" type="number" name="retrieval_evidence_ratio" step="0.05" min="0.05" max="0.95" placeholder="기본" />
+            </div>
+            <div class="row">
+              <label for="retrieval_rrf_k">rrf_k</label>
+              <input id="retrieval_rrf_k" type="number" name="retrieval_rrf_k" min="1" max="200" placeholder="기본" />
+            </div>
+            <div class="row">
+              <label for="retrieval_context_limit">context_limit</label>
+              <input id="retrieval_context_limit" type="number" name="retrieval_context_limit" min="1" max="30" placeholder="기본" />
+            </div>
+          </details>
           <button type="submit" id="search_btn">검색 실행</button>
         </form>
         <div id="search_error"></div>
@@ -366,13 +406,21 @@
         : "") +
       "</div></div>";
 
+    const tuning = retrieval.tuning_applied || {};
+    const tuningHtml = Object.keys(tuning).length
+      ? "<div class='muted' style='margin-top:8px;font-size:12px;line-height:1.45;'>적용 파라미터: <code>" +
+        escapeHtml(JSON.stringify(tuning)) +
+        "</code></div>"
+      : "";
+
     const retrievalSummaryHtml =
       "<div><span class='pill'>intent: " + escapeHtml(retrieval.intent || "-") + "</span>" +
       "<span class='pill'>language: " + escapeHtml(retrieval.language || "-") + "</span>" +
       "<span class='pill'>rrf_candidates: " + escapeHtml(retrieval.rrf_candidates || 0) + "</span></div>" +
       "<div class='muted' style='margin-top:6px;'>planned_queries: " +
       escapeHtml((retrieval.planned_queries || []).join(" | ")) + "</div>" +
-      openaiUsageHtml;
+      openaiUsageHtml +
+      tuningHtml;
 
     const answerBody = escapeHtml(answer).replace(/\n/g, "<br/>");
     const metaLine = escapeHtml(metaText).replace(/^\s+/, "");
