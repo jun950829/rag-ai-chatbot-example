@@ -806,36 +806,112 @@ def search_embedding_tables(
     return [dict(r) for r in rows]
 
 
-def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str:
-    """검색 결과를 한국어 안내 문구+프로필 발췌 형태로 묶어 채팅/로그용 문자열을 만든다."""
-    q = (query or "").strip()
-    if not results:
-        return f"'{q}'와(과) 관련된 업체를 찾지 못했습니다. 검색어를 더 구체적으로 입력해 주세요."
-
-    # Prefer profile chunks so the answer area shows company profile-like data directly.
-    profiles = [r for r in results if (r.get("chunk_typ") == "profile")]
-    candidates = profiles if profiles else results
-
-    lines: list[str] = [f"[검색어] {q}", "[프로필 데이터]"]
-    seen_external_ids: set[str] = set()
-    for r in candidates:
-        ext = (r.get("external_id") or "").strip() or "외부 ID 없음"
-        if ext in seen_external_ids:
+def split_search_results_profile_evidence(
+    results: list[dict[str, Any]],
+    *,
+    max_profiles: int = 4,
+    max_evidence: int = 8,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """RRF 순서를 유지한 채 profile은 external_id 기준 중복 제거, 나머지는 evidence 취급."""
+    profiles: list[dict[str, Any]] = []
+    seen_ext: set[str] = set()
+    for r in results:
+        if r.get("chunk_typ") != "profile":
             continue
-        seen_external_ids.add(ext)
-        content = (r.get("content") or "").strip()
-        if not content:
+        ext = str(r.get("external_id") or "").strip()
+        if ext and ext in seen_ext:
             continue
-        score = r.get("score")
-        score_text = f"{float(score):.3f}" if isinstance(score, (int, float)) else "-"
-        lines.append(f"- external_id: {ext} (score={score_text}, lang={r.get('lang')})")
-        lines.append(content)
-        if len(seen_external_ids) >= 3:
+        if ext:
+            seen_ext.add(ext)
+        profiles.append(r)
+        if len(profiles) >= max_profiles:
             break
 
-    if len(lines) <= 2:
-        return f"[검색어] {q}\n[프로필 데이터]\n- 표시할 profile 데이터가 없습니다."
-    return "\n".join(lines)
+    evidence: list[dict[str, Any]] = []
+    for r in results:
+        if r.get("chunk_typ") == "profile":
+            continue
+        evidence.append(r)
+        if len(evidence) >= max_evidence:
+            break
+    return profiles, evidence
+
+
+def format_search_results_for_llm_context(results: list[dict[str, Any]]) -> str:
+    """OpenAI 등 답변 생성용: 프로필은 항목별 블록, evidence는 한 줄 요약 (의도/점수 메타 없음)."""
+    profiles, evidence = split_search_results_profile_evidence(results)
+    blocks: list[str] = []
+
+    if profiles:
+        blocks.append("【프로필】 (전시 참가사·전시품 요약)")
+        for i, r in enumerate(profiles, start=1):
+            ext = (r.get("external_id") or "").strip() or "(식별자 없음)"
+            sf = (r.get("source_field") or "").strip()
+            body = (r.get("content") or "").strip()
+            if len(body) > 1200:
+                body = body[:1200].rstrip() + "…"
+            head = f"— 항목 {i} · {ext}"
+            if sf:
+                head += f" · 출처 필드: {sf}"
+            blocks.append(head + "\n" + body)
+
+    if evidence:
+        blocks.append("\n【추가 근거】 (상세·증빙 텍스트 요약, 한 줄씩)")
+        for i, r in enumerate(evidence, start=1):
+            ext = (r.get("external_id") or "").strip() or "-"
+            sf = (r.get("source_field") or "").strip() or "-"
+            typ = (r.get("chunk_typ") or "").strip() or "-"
+            c = (r.get("content") or "").strip().replace("\n", " ")
+            if len(c) > 300:
+                c = c[:300].rstrip() + "…"
+            blocks.append(f"· [{i}] 유형={typ}, 식별자={ext}, 필드={sf}\n  {c}")
+
+    out = "\n".join(blocks).strip()
+    return out or "(검색 결과 본문이 비어 있습니다.)"
+
+
+def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str:
+    """검색 결과를 채팅에 바로 넣기 좋은 한국어 안내 문구로 만든다 (템플릿/폴백용)."""
+    q = (query or "").strip()
+    if not results:
+        return f"「{q}」에 맞는 정보를 찾지 못했습니다. 다른 표현으로 검색해 보시겠어요?"
+
+    profiles, evidence = split_search_results_profile_evidence(results)
+    lines: list[str] = [
+        f"질문하신「{q}」과 가장 잘 맞는 저장 데이터를 아래처럼 정리했습니다.",
+        "",
+    ]
+
+    if profiles:
+        lines.append("■ 관련 프로필")
+        for r in profiles:
+            ext = (r.get("external_id") or "").strip() or "식별자 없음"
+            body = (r.get("content") or "").strip()
+            if not body:
+                continue
+            lines.append(f"  · {ext}")
+            for part in body.split("\n"):
+                part = part.strip()
+                if part:
+                    lines.append(f"    {part}")
+        lines.append("")
+
+    if evidence:
+        lines.append("■ 추가로 참고한 내용 (요약)")
+        for r in evidence[:6]:
+            ext = (r.get("external_id") or "").strip() or "-"
+            sf = (r.get("source_field") or "").strip()
+            c = (r.get("content") or "").strip().replace("\n", " ")
+            if len(c) > 200:
+                c = c[:200].rstrip() + "…"
+            tail = f" ({sf})" if sf else ""
+            lines.append(f"  · {ext}{tail}: {c}")
+        lines.append("")
+
+    lines.append("위 내용만 근거로 답변했습니다. 더 구체적인 업체명·제품명이 있으면 알려 주세요.")
+    if not profiles and not evidence:
+        return f"「{q}」에 대해 표시할 검색 본문이 없습니다."
+    return "\n".join(lines).rstrip()
 
 
 # 구버전 import/호출자 호환용 별칭 (동일 함수를 가리킴).

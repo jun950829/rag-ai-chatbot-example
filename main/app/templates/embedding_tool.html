@@ -155,7 +155,7 @@
           </div>
           <div class="row">
             <label for="openai_model">OpenAI Model</label>
-            <input id="openai_model" type="text" name="openai_model" value="gpt-4o-mini" />
+            <input id="openai_model" type="text" name="openai_model" value="gpt-5-mini" />
           </div>
           <button type="submit" id="search_btn">검색 실행</button>
         </form>
@@ -374,11 +374,31 @@
       escapeHtml((retrieval.planned_queries || []).join(" | ")) + "</div>" +
       openaiUsageHtml;
 
+    const answerBody = escapeHtml(answer).replace(/\n/g, "<br/>");
+    const metaLine = escapeHtml(metaText).replace(/^\s+/, "");
+    const answerSection =
+      "<div class='search-block'>" +
+      "<h3 style='margin:0 0 6px 0;font-size:1.05rem;'>답변</h3>" +
+      (metaLine ? ("<p class='muted' style='margin:0 0 10px 0;font-size:0.85rem;'>" + metaLine + "</p>") : "") +
+      "<div class='search-answer-body' style='line-height:1.6;'>" + answerBody + "</div>" +
+      "</div>";
+
+    const devLogsInner =
+      "<div class='search-block' style='margin-top:0;'>" +
+      retrievalSummaryHtml +
+      logsHtml +
+      "</div>";
+    const devLogsSection =
+      "<details class='search-dev-logs' style='margin-top:10px;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;background:#fafbfc;'>" +
+      "<summary style='cursor:pointer;font-weight:600;color:#475569;'>개발용 · 처리 로그·의도·쿼리 (펼치기)</summary>" +
+      devLogsInner +
+      "</details>";
+
     if (!items.length) {
       searchResult.innerHTML =
-        "<div class='search-block'><strong>검색 처리 로그</strong>" +
-        retrievalSummaryHtml + logsHtml + "</div>" +
-        "<div class='search-block'><p><strong>답변:</strong> " + escapeHtml(answer) + escapeHtml(metaText) + "</p><p class='muted'>결과가 없습니다.</p></div>";
+        answerSection +
+        "<div class='search-block'><p class='muted'>벡터 검색 결과 행이 없습니다.</p></div>" +
+        devLogsSection;
       return;
     }
     const rows = items.map(function (r) {
@@ -396,15 +416,15 @@
         "</tr>";
     }).join("");
 
-    searchResult.innerHTML =
-      "<div class='search-block'><strong>검색 처리 로그</strong>" +
-      retrievalSummaryHtml + logsHtml + "</div>" +
-      "<div class='search-block'><p><strong>답변:</strong> " + escapeHtml(answer) + escapeHtml(metaText) + "</p></div>" +
-      "<div class='search-block'><div><strong>검색 결과</strong> " +
+    const tableSection =
+      "<div class='search-block'>" +
+      "<div style='margin-bottom:8px;'><strong>검색 결과</strong> " +
       "(count: <code>" + (payload.count || 0) + "</code>, top_k: <code>" + (payload.top_k || 0) + "</code>)</div>" +
       "<table><thead><tr>" +
       "<th>score</th><th>distance</th><th>tag</th><th>external_id</th><th>table</th><th>source_field</th><th>chunk_index</th><th>content</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+
+    searchResult.innerHTML = answerSection + tableSection + devLogsSection;
   }
 
   searchForm.addEventListener("submit", async function (e) {

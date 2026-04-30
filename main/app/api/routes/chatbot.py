@@ -74,7 +74,10 @@ async def enqueue_chat(
         )
         cached = await redis.get(cache_key)
         if cached:
-            await redis.rpush(stream_key, json.dumps({"event": "token", "data": cached}, ensure_ascii=False))
+            await redis.rpush(
+                stream_key,
+                json.dumps({"event": "token", "data": cached}, ensure_ascii=False),
+            )
             await redis.rpush(stream_key, json.dumps({"event": "done", "data": "[DONE]"}, ensure_ascii=False))
             await redis.expire(stream_key, settings.chat_cache_ttl_seconds)
             await _push_trace(
@@ -122,7 +125,8 @@ async def stream_chat(request_id: str) -> StreamingResponse:
                 payload = json.loads(raw)
                 event = payload.get("event", "message")
                 data = payload.get("data", "")
-                yield f"event: {event}\ndata: {data}\n\n"
+                # data에 줄바꿈이 있어도 SSE 한 줄로 안전하게 보낸다.
+                yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
                 if event in {"done", "error"}:
                     return
             yield "event: done\ndata: [DONE]\n\n"

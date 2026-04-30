@@ -150,7 +150,7 @@ async def embedding_tool_search(
     top_k: int = Form(default=10),
     chunk_type: str = Form(default="all"),
     answer_mode: str = Form(default="template"),
-    openai_model: str = Form(default="gpt-4o-mini"),
+    openai_model: str = Form(default="gpt-5-mini"),
 ) -> JSONResponse:
     if not (query or "").strip():
         raise HTTPException(status_code=400, detail="검색어가 비어 있습니다.")
@@ -177,6 +177,12 @@ async def embedding_tool_search(
     except Exception as e:  # noqa: BLE001
         logger.exception("embedding_tool_search failed")
         raise HTTPException(status_code=500, detail=f"검색 처리 실패: {type(e).__name__}: {e}") from e
+    logger.info(
+        "[embedding_api] search ok query_len=%d results=%s answer_mode=%s",
+        len((query or "").strip()),
+        payload.get("count"),
+        (payload.get("answer_meta") or {}).get("mode"),
+    )
     return JSONResponse(payload)
 
 

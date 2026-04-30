@@ -66,6 +66,18 @@ def _candidate_codes(raw_code: str) -> list[str]:
     return _dedupe_codes(out)
 
 
+def _effective_quickmenu_label(row: KprintQaQuickmenu) -> str:
+    """CSV에서 ``quickmenu_label`` 이 비어 있거나 ``-`` 인 경우 UI용 라벨을 만든다.
+
+    참가업체 FAQ primary 행은 종종 ``quickmenu_label`` 이 비어 있고 ``subcategory``/``category``/``domain`` 에만 텍스트가 있다.
+    """
+    for raw in (row.quickmenu_label, row.subcategory, row.category, row.domain):
+        v = (raw or "").strip()
+        if v and v != "-":
+            return v
+    return (row.qna_code or "").strip()
+
+
 def quickmenu_row_to_dict(row: KprintQaQuickmenu, *, include_prompt: bool = True) -> dict:
     """API 응답용 dict (긴 ``default_answer_prompt`` 는 필요 시 생략)."""
     d: dict = {
@@ -74,6 +86,7 @@ def quickmenu_row_to_dict(row: KprintQaQuickmenu, *, include_prompt: bool = True
         "parent_id": row.parent_id,
         "depth": row.depth,
         "quickmenu_label": row.quickmenu_label,
+        "quickmenu_display_label": _effective_quickmenu_label(row),
         "qa_user": row.qa_user,
         "domain": row.domain,
         "category": row.category,

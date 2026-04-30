@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,6 +14,7 @@ from worker.embedding import build_embeddings_batch
 from worker.llm import classify_intent_heuristic, stream_text_tokens
 from worker.queue import WorkerQueue
 
+logger = logging.getLogger(__name__)
 
 engine = create_async_engine(settings.postgres_dsn, pool_pre_ping=True, echo=False)
 
@@ -39,7 +41,7 @@ async def _trace(
     await redis.expire(trace_key, 3600)
 
 
-async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, message: str) -> str:
+async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, message: str) -> dict[str, Any]:
     endpoint = f"{settings.api_base_url.rstrip('/')}/tools/embedding/api/search"
     form_data = {
         "session_id": session_id,
@@ -51,6 +53,7 @@ async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, m
         "answer_mode": "openai",
         "openai_model": settings.openai_model,
     }
+    logger.info("[worker] retrieval POST %s session_id=%s", endpoint, (session_id or "")[:40])
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(endpoint, data=form_data)
     try:
@@ -61,6 +64,11 @@ async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, m
     if not response.is_success:
         detail = payload.get("detail") if isinstance(payload, dict) else response.text
         raise RuntimeError(f"retrieval failed: {detail}")
+
+    logger.info(
+        "[worker] retrieval OK answer_chars=%d",
+        len(str(payload.get("answer_korean") or "")),
+    )
 
     # API가 생성한 step_logs(검색/ RRF/ OpenAI 등)를 워커 trace로 펼쳐서 저장한다.
     try:
@@ -84,7 +92,7 @@ async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, m
     except Exception:
         # 로깅 실패는 본 흐름을 막지 않는다.
         pass
-    return str(payload.get("answer_korean") or "검색 결과 기반 답변을 생성하지 못했습니다.")
+    return payload
 
 
 def _heuristic_answer(intent: str) -> str:
@@ -95,7 +103,7 @@ def _heuristic_answer(intent: str) -> str:
     if intent == "not_related":
         return "현재는 전시 참가업체/제품 관련 질문만 답변할 수 있어요."
     if intent == "general":
-        return "general"
+        return "전시·참가업체와 무관한 일반 대화로 보입니다. 전시나 업체·제품에 대해 물어봐 주시면 더 잘 도와드릴 수 있어요."
     return "요청을 처리했습니다."
 
 
@@ -115,6 +123,7 @@ async def llm_consumer(redis: Redis) -> None:
         session_intent_key = f"chat:session:{session_id}:last_intent" if session_id else ""
 
         try:
+            logger.info("[worker] job start request_id=%s retry=%s", request_id, retries)
             await _trace(
                 redis,
                 request_id=request_id,
@@ -124,6 +133,7 @@ async def llm_consumer(redis: Redis) -> None:
             )
             prev_intent = await redis.get(session_intent_key) if session_intent_key else None
             intent = classify_intent_heuristic(job["message"], previous_intent=prev_intent)
+            logger.info("[worker] heuristic intent=%s (prev=%s)", intent, prev_intent or "-")
             await _trace(
                 redis,
                 request_id=request_id,
@@ -132,6 +142,7 @@ async def llm_consumer(redis: Redis) -> None:
                 detail=f"분류 결과: {intent} (previous_intent={prev_intent or '-'})",
             )
 
+            suggestion_cards: list[Any] = []
             if intent in {"company", "product", "follow_up"}:
                 await _trace(
                     redis,
@@ -140,7 +151,15 @@ async def llm_consumer(redis: Redis) -> None:
                     status="started",
                     detail="검색 → RRF → OpenAI 단계 시작",
                 )
-                answer = await _answer_retrieval(redis, request_id=request_id, session_id=session_id, message=job["message"])
+                payload = await _answer_retrieval(redis, request_id=request_id, session_id=session_id, message=job["message"])
+                answer = str(payload.get("answer_korean") or "검색 결과 기반 답변을 생성하지 못했습니다.")
+                raw_cards = payload.get("suggestion_cards")
+                suggestion_cards = raw_cards if isinstance(raw_cards, list) else []
+                logger.info(
+                    "[worker] retrieval path done request_id=%s cards=%d",
+                    request_id,
+                    len(suggestion_cards),
+                )
                 await _trace(
                     redis,
                     request_id=request_id,
@@ -150,6 +169,7 @@ async def llm_consumer(redis: Redis) -> None:
                 )
             else:
                 answer = _heuristic_answer(intent)
+                logger.info("[worker] heuristic-only answer request_id=%s", request_id)
                 await _trace(
                     redis,
                     request_id=request_id,
@@ -169,6 +189,12 @@ async def llm_consumer(redis: Redis) -> None:
             async for token in stream_text_tokens(answer):
                 await redis.rpush(stream_key, json.dumps({"event": "token", "data": token}, ensure_ascii=False))
 
+            if suggestion_cards:
+                await redis.rpush(
+                    stream_key,
+                    json.dumps({"event": "cards", "data": suggestion_cards}, ensure_ascii=False),
+                )
+
             await redis.set(cache_key, answer, ex=600)
             if session_intent_key:
                 await redis.set(session_intent_key, intent, ex=3600)
@@ -182,6 +208,7 @@ async def llm_consumer(redis: Redis) -> None:
                 detail="응답 완료 이벤트 전송",
             )
         except Exception as exc:  # noqa: BLE001
+            logger.exception("[worker] job failed request_id=%s: %s", request_id, exc)
             await _trace(
                 redis,
                 request_id=request_id,

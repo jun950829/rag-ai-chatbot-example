@@ -15,9 +15,11 @@ from app.api.router import api_router
 from app.api.routes.chatbot import router as chatbot_router
 from app.api.routes.embedding_tool import router as embedding_tool_router
 from app.core.config import get_settings
+from app.core.logging_config import configure_console_logging
 
 
 def create_app() -> FastAPI:
+    configure_console_logging()
     settings = get_settings()
 
     app = FastAPI(
