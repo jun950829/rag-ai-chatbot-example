@@ -1,3 +1,4 @@
+# 임베딩 EC2에서 실행. .env 에 REDIS_URL·API_BASE_URL 을 메인(EC2-1) 과 맞춰야 /chat 큐가 처리됨 (embedding/.env.example 참고).
 services:
   worker:
     build:

@@ -15,12 +15,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import AsyncSessionLocal, async_engine, get_async_session
+from app.db.sync_url import to_sync_postgres_dsn
 
 settings = get_settings()
 
 # 레거시 동기 엔진 (기존 ingest/파이프라인 호환)
 engine = create_engine(
-    settings.database_url,
+    to_sync_postgres_dsn(settings.database_url),
     future=True,
     pool_pre_ping=True,
 )

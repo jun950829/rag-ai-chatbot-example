@@ -38,6 +38,8 @@ PROJECT_ROOT = RAG_DIR.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.db.sync_url import to_sync_postgres_dsn
+
 DEFAULT_EMBEDDING_MODEL_ID = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_DEVICE = os.environ.get("EMBEDDING_DEVICE", "mps")
 
@@ -141,10 +143,10 @@ def _resolve_database_url() -> str:
         return "postgresql+psycopg://postgres:postgres@localhost:5432/rag_template"
 
     if "@db:" in url and not in_container:
-        return url.replace("@db:", "@localhost:")
-    if "@localhost:" in url and in_container:
-        return url.replace("@localhost:", "@db:")
-    return url
+        url = url.replace("@db:", "@localhost:")
+    elif "@localhost:" in url and in_container:
+        url = url.replace("@localhost:", "@db:")
+    return to_sync_postgres_dsn(url)
 
 
 engine = sa.create_engine(_resolve_database_url(), future=True, pool_pre_ping=True)  # 배치/검색 공용 동기 DB 엔진
@@ -643,13 +645,36 @@ def _embed_texts(
     device: str | None,
     batch_size: int = 32,
 ) -> list[list[float]]:
-    """임의 텍스트 리스트를 로컬 모델로만 임베딩 (쿼리/배치 공용 저수준 API)."""
+    """임의 텍스트 리스트 임베딩 (로컬 모델 우선, 미설치 시 OpenAI 폴백)."""
+    if not texts:
+        return []
     resolved_device = _resolve_device(device)
-    if _is_qwen3_vl_embedding_model(model_id):
-        embedder = _get_qwen3_vl_embedder(model_id, resolved_device)
-    else:
-        embedder = _get_sentence_transformer(model_id, resolved_device)
-    return _encode(embedder, texts, batch_size=batch_size, model_id=model_id)
+    try:
+        if _is_qwen3_vl_embedding_model(model_id):
+            embedder = _get_qwen3_vl_embedder(model_id, resolved_device)
+        else:
+            embedder = _get_sentence_transformer(model_id, resolved_device)
+        return _encode(embedder, texts, batch_size=batch_size, model_id=model_id)
+    except ImportError:
+        # 경량 배포(EC2)에서 sentence-transformers/transformers 미설치 시 OpenAI 임베딩으로 자동 폴백.
+        from openai import OpenAI
+
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            raise
+        base_url = os.environ.get("OPENAI_BASE_URL", "").strip() or None
+        embed_model = os.environ.get("OPENAI_EMBED_MODEL", "text-embedding-3-small").strip()
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        out: list[list[float]] = []
+        eff_batch = max(1, min(int(batch_size or 1), 128))
+        for start in range(0, len(texts), eff_batch):
+            chunk = texts[start : start + eff_batch]
+            resp = client.embeddings.create(model=embed_model, input=chunk)
+            rows = sorted(resp.data, key=lambda d: d.index)
+            out.extend([[float(x) for x in r.embedding] for r in rows])
+        if len(out) != len(texts):
+            raise RuntimeError("openai embedding batch size mismatch")
+        return out
 
 
 def _embed_query_via_http(

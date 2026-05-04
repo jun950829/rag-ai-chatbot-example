@@ -1,13 +1,24 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class WorkerSettings(BaseSettings):
-    # 워커는 별도 EC2에서 실행되므로 동일 Redis/Postgres 접속 정보만 공유한다.
+    """워커는 메인(API) Redis 큐를 소비한다. EC2 분리 배포 시 localhost / docker 서비스명이면 큐 미처리."""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    redis_url: str = "redis://localhost:6379/0"
-    postgres_dsn: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot"
-    api_base_url: str = "http://api:8000"
+    redis_url: str = Field(
+        default="redis://127.0.0.1:6379/0",
+        description="/chat 가 쌓는 큐와 동일한 Redis (main 앱 REDIS_URL 과 일치)",
+    )
+    postgres_dsn: str = Field(
+        default="postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/chatbot",
+        description="임베딩 큐 소비용 async DSN",
+    )
+    api_base_url: str = Field(
+        default="http://127.0.0.1:8000",
+        description="메인 FastAPI 공개 주소 (검색·챗 UI). docker compose 내부 호스트명 api 는 원격 워커에서 쓰지 말 것",
+    )
 
     llm_queue_name: str = "queue:llm"
     embedding_queue_name: str = "queue:embedding"

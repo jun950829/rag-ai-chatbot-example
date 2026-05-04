@@ -22,6 +22,12 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MAIN_ROOT = os.path.join(PROJECT_ROOT, "main")
 sys.path.insert(0, MAIN_ROOT)
 sys.path.insert(1, PROJECT_ROOT)
+_scripts_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _scripts_dir)
+
+import ingest_db_env  # noqa: E402
+
+ingest_db_env.ensure_sync_database_url(main_root=MAIN_ROOT)
 
 from app.company.helpers import apply_company_fields, find_company_by_external_id
 from app.company.models import Company
