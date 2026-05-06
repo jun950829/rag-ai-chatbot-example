@@ -46,10 +46,11 @@ class ConversationSession(Base):
     # 자유 메타데이터(클라이언트/디바이스/AB테스트 등)
     metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, default=dict, nullable=False)
 
-    # 1:N 관계 (세션 → 메시지)
+    # 세션 로드 시 messages 를 selectin 하면 async 경로와 flush 조합에서 암시적 IO 가 생길 수 있다.
+    # 메시지는 MessageRepository 에서만 조회한다.
     messages: Mapped[list["Message"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
-        lazy="selectin",  # N+1 방지
+        lazy="noload",
     )
 

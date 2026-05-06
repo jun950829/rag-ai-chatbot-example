@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from functools import partial
+from time import perf_counter
 from typing import Any
 
 from app.rag.retrieval.intent import (
@@ -18,7 +21,7 @@ from app.rag.retrieval.intent import (
 from app.rag.retrieval.logging_utils import append_step, build_openai_usage_summary
 from app.rag.retrieval.memory import ConversationMemory
 from app.rag.retrieval.planning import generate_search_plan_v2
-from app.rag.retrieval.search import apply_cutoff_and_build_context, rrf_fuse, semantic_search_multi_query
+from app.rag.retrieval.search import semantic_rrf_cutoff_bundle_sync
 from app.rag.retrieval.types import RetrievalConfig
 
 logger = logging.getLogger(__name__)
@@ -31,6 +34,7 @@ async def execute_retrieval_pipeline(
     has_history: bool = False,
     openai_client: Any | None = None,
     intent_model: str = "gpt-4o-mini",
+    intent_use_openai: bool = True,
     embedding_remote_base_url: str | None = None,
     memory: ConversationMemory | None = None,
 ) -> dict[str, Any]:
@@ -40,8 +44,27 @@ async def execute_retrieval_pipeline(
     if not normalized_query:
         raise ValueError("query is empty")
     step_logs: list[dict[str, Any]] = []
-    append_step(
-        step_logs,
+    t0 = perf_counter()
+    t_prev = t0
+
+    def _append_step(*, step: int, title: str, detail: str, data: dict[str, Any] | None = None) -> None:
+        nonlocal t_prev
+        now = perf_counter()
+        step_ms = int((now - t_prev) * 1000)
+        total_ms = int((now - t0) * 1000)
+        payload = dict(data or {})
+        payload["step_elapsed_ms"] = step_ms
+        payload["pipeline_elapsed_ms"] = total_ms
+        append_step(
+            step_logs,
+            step=step,
+            title=title,
+            detail=f"{detail} ({step_ms}ms, total={total_ms}ms)",
+            data=payload,
+        )
+        t_prev = now
+
+    _append_step(
         step=0,
         title="입력 정규화",
         detail="공백/특수문자를 정리해 의도분류·플래너 공통 입력으로 변환",
@@ -50,11 +73,12 @@ async def execute_retrieval_pipeline(
     if memory is not None:
         memory.add("user", normalized_query)
 
-    logger.info("[retrieval][step1] intent classification started")
+    logger.info("[retrieval][step1] intent classification started (intent_use_openai=%s)", intent_use_openai)
+    intent_client = openai_client if intent_use_openai else None
     intent, intent_meta = await classify_intent_v2(
         message=normalized_query,
         has_history=has_history,
-        openai_client=openai_client,
+        openai_client=intent_client,
         model=intent_model,
         memory=memory,
     )
@@ -68,31 +92,75 @@ async def execute_retrieval_pipeline(
         else "all"
     )
     is_dialog_followup = bool(intent_meta.get("is_dialog_followup", False))
+    classification_source = str(intent_meta.get("source", "unknown"))
+    used_openai = _intent_meta_used_openai(intent_meta)
+    # 휴리스틱 단계에서 바로 확정됐는지 vs OpenAI 7단계까지 갔는지 (trace/UI에서 구분)
+    intent_decider: str = "openai" if used_openai else "heuristic"
+
+    llm_path_note = ""
+    if not intent_use_openai:
+        llm_path_note = (
+            " LLM의도분류: 요청 설정(intent_use_openai=false)으로 Chat Completions 호출 없음 — 휴리스틱·규칙만 사용."
+        )
+    elif intent_client is None:
+        llm_path_note = (
+            " LLM의도분류: 설정은 켜져 있으나 OpenAI 클라이언트 없음(예: OPENAI_API_KEY 미설정) — 휴리스틱만 사용."
+        )
+    elif used_openai:
+        if classification_source.startswith("openai_rescue"):
+            llm_path_note = (
+                f" LLM의도분류(구제): 휴리스틱이 general/not_related/FAQ 로 보낼 뻔했으나 "
+                f"OpenAI가 검색 의도로 보정함 ({classification_source}, model={intent_model})."
+            )
+        else:
+            llm_path_note = (
+                f" LLM의도분류: OpenAI로 intent/topic 한 줄 파싱 적용됨 (model={intent_model})."
+            )
+    else:
+        llm_path_note = (
+            " LLM의도분류: 클라이언트는 있으나 휴리스틱 단계에서 의도가 확정되어 "
+            "(또는 OpenAI 재시도 필요 없음으로) 검색 분류용 Chat 호출 없음."
+        )
+
+    classification_kind = "heuristic"
+    if used_openai:
+        classification_kind = (
+            "openai_rescue" if classification_source.startswith("openai_rescue") else "openai_fallback"
+        )
+
+    decider_ko = "OpenAI(Chat API)" if used_openai else "휴리스틱(규칙·키워드)"
+    detail_step1 = (
+        f"intent={intent}, 검색축={retrieval_topic or '-'}, 후행={is_dialog_followup}. "
+        f"최종판정={decider_ko}, 내부 source={classification_source}.{llm_path_note}"
+    )
+
     logger.info(
-        "[retrieval][step1] intent=%s retrieval_topic=%s is_dialog_followup=%s",
+        "[retrieval][step1] intent=%s retrieval_topic=%s followup=%s decider=%s source=%s intent_use_openai=%s client=%s",
         intent,
         retrieval_topic,
         is_dialog_followup,
+        intent_decider,
+        classification_source,
+        intent_use_openai,
+        "yes" if intent_client is not None else "no",
     )
-    classification_source = str(intent_meta.get("source", "unknown"))
-    used_openai = _intent_meta_used_openai(intent_meta)
-    classification_path_text = "OpenAI 기반 분류" if used_openai else "휴리스틱 분류"
-    append_step(
-        step_logs,
+    _append_step(
         step=1,
         title="의도 분류",
-        detail=(
-            f"query 의도를 '{intent}'로 분류, 검색축={retrieval_topic or '-'}, "
-            f"대화후행={is_dialog_followup} (분류 경로: {classification_path_text}, source={classification_source})"
-        ),
+        detail=detail_step1,
         data={
             "intent": intent,
             "retrieval_topic": retrieval_topic,
             "is_dialog_followup": is_dialog_followup,
             "query": normalized_query,
             "classification_meta": intent_meta,
+            "intent_decider": intent_decider,
+            "classification_source": classification_source,
+            "classification_kind": classification_kind,
             "openai_used_for_intent": used_openai,
-            "intent_model": intent_model if openai_client is not None else None,
+            "intent_model": intent_model if intent_client is not None else None,
+            "intent_use_openai_param": intent_use_openai,
+            "openai_client_available": intent_client is not None,
         },
     )
 
@@ -101,7 +169,7 @@ async def execute_retrieval_pipeline(
     if language not in LANGUAGE_LABELS:
         language = "ko"
     logger.info("[retrieval][step2] language=%s", language)
-    append_step(step_logs, step=2, title="언어 감지", detail=f"입력 언어를 '{language}'로 판정", data={"language": language})
+    _append_step(step=2, title="언어 감지", detail=f"입력 언어를 '{language}'로 판정", data={"language": language})
 
     openai_present = openai_client is not None
     logger.info("[retrieval][step3] query planning started")
@@ -119,8 +187,7 @@ async def execute_retrieval_pipeline(
         }
         planned_queries: list[str] = []
         logger.info("[retrieval][step3] query planning skipped intent=%s", intent)
-        append_step(
-            step_logs,
+        _append_step(
             step=3,
             title="쿼리 계획 생략",
             detail="비검색 의도로 OpenAI 쿼리 플래너·다중 쿼리 생성을 건너뜀",
@@ -142,8 +209,7 @@ async def execute_retrieval_pipeline(
         )
         logger.info("[retrieval][step3] planned_queries=%s", planned_queries)
         planner_src = str((planning_meta.get("planner_meta") or {}).get("source", ""))
-        append_step(
-            step_logs,
+        _append_step(
             step=3,
             title="쿼리 계획",
             detail=f"{len(planned_queries)}개 집중 쿼리 생성",
@@ -159,8 +225,7 @@ async def execute_retrieval_pipeline(
 
     if intent in {"greeting", "not_related", "general"}:
         heuristic_answer = build_intent_heuristic_answer(intent=intent, language=language, query=normalized_query)
-        append_step(
-            step_logs,
+        _append_step(
             step=4,
             title="검색 생략",
             detail=f"의도 '{intent}'로 판단되어 다중 쿼리 검색을 수행하지 않음",
@@ -191,44 +256,35 @@ async def execute_retrieval_pipeline(
     search_lang = "kor" if language == "ko" else "eng"
     # --- 단계 4: entity_scope는 라우팅 intent가 아니라 retrieval_topic 기준으로 결정한다 ---
     entity_scope = entity_scope_from_retrieval_topic(retrieval_topic)
-    searches = semantic_search_multi_query(
-        queries=planned_queries,
-        model_id=cfg.model_id,
-        device=cfg.device,
-        top_k_per_query=cfg.top_k_per_query,
-        lang=search_lang,
-        evidence_ratio=cfg.evidence_ratio,
-        embedding_remote_base_url=embedding_remote_base_url,
-        entity_scope=entity_scope,
+    # 동기 검색·DB 전체를 asyncio 루프 스레드 밖 한 블록에서 실행 (MissingGreenlet 방지)
+    searches, fused, final_results, llm_context = await asyncio.to_thread(
+        partial(
+            semantic_rrf_cutoff_bundle_sync,
+            queries=planned_queries,
+            cfg=cfg,
+            search_lang=search_lang,
+            embedding_remote_base_url=embedding_remote_base_url,
+            entity_scope=entity_scope,
+        )
     )
     query_summaries: list[dict[str, Any]] = []
     for bucket in searches:
         rows = bucket["results"]
         query_summaries.append({"query": bucket["query"], "count": len(rows), "top_preview": [r.get("content", "")[:80] for r in rows[:2]]})
-    append_step(
-        step_logs,
+    _append_step(
         step=4,
         title="의미 검색",
         detail="쿼리별 profile/evidence 검색 수행",
         data={"query_summaries": query_summaries, "search_lang": search_lang, "entity_scope": entity_scope},
     )
 
-    fused = rrf_fuse(searches, rrf_k=cfg.rrf_k)
-    append_step(
-        step_logs,
+    _append_step(
         step=5,
         title="다중 쿼리 융합 (RRF)",
         detail=f"RRF로 {len(fused)}개 후보 생성",
         data={"rrf_k": cfg.rrf_k, "fused_count": len(fused)},
     )
-    final_results, llm_context = apply_cutoff_and_build_context(
-        fused,
-        score_cutoff=cfg.score_cutoff,
-        final_top_k=cfg.final_top_k,
-        context_limit=cfg.context_limit,
-    )
-    append_step(
-        step_logs,
+    _append_step(
         step=6,
         title="컷오프 + 컨텍스트 조립",
         detail=f"score_cutoff={cfg.score_cutoff} 적용 후 {len(final_results)}개 결과 유지",

@@ -48,9 +48,49 @@
       }
       .cat-status { margin-top: 8px; font-size: 12px; color: #64748b; }
       .chat-log { height: 46vh; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #fbfcff; }
-      .msg { max-width: 78%; border-radius: 12px; padding: 10px 12px; white-space: pre-wrap; line-height: 1.5; font-size: 14px; }
-      .msg.user { align-self: flex-end; background: #111827; color: #fff; }
+      .msg { max-width: 92%; border-radius: 12px; padding: 10px 12px; line-height: 1.5; font-size: 14px; display: flex; flex-direction: column; gap: 10px; }
+      .msg-text { white-space: pre-wrap; word-break: break-word; }
+      .msg.user { align-self: flex-end; background: #111827; color: #fff; max-width: 78%; }
       .msg.bot { align-self: flex-start; background: #fff; border: 1px solid #e3e8f3; color: #111; }
+      .suggestion-carousel { width: 100%; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+      .suggestion-track { display: flex; gap: 12px; flex-wrap: nowrap; padding: 2px 0; }
+      .suggestion-card {
+        flex: 0 0 min(268px, 85vw);
+        scroll-snap-align: start;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 10px;
+        background: #f8fafc;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+      }
+      .suggestion-thumb {
+        height: 100px;
+        border-radius: 10px;
+        background: #e2e8f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .suggestion-thumb img { width: 100%; height: 100%; object-fit: contain; }
+      .suggestion-thumb-ph { font-size: 12px; color: #64748b; font-weight: 600; }
+      .suggestion-title { font-weight: 700; font-size: 13px; line-height: 1.35; color: #0f172a; }
+      .suggestion-sub { font-size: 12px; color: #475569; line-height: 1.45; max-height: 4.2em; overflow: hidden; }
+      button.suggestion-detail-btn {
+        margin-top: auto;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 7px 10px;
+        background: #fff !important;
+        color: #0f172a !important;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.suggestion-detail-btn:hover { background: #f1f5f9 !important; border-color: #94a3b8 !important; }
       .composer { border-top: 1px solid #eceff5; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
       textarea { width: 100%; min-height: 50px; max-height: 160px; resize: vertical; border: 1px solid #d8deea; border-radius: 10px; padding: 10px; font: inherit; }
       #send-btn { border: 0; background: #1e293b; color: #fff; border-radius: 10px; padding: 0 16px; font-weight: 600; cursor: pointer; }
@@ -67,6 +107,14 @@
       .trace-item.done { border-left-color: #16a34a; }
       .trace-item.error { border-left-color: #dc2626; }
       .trace-meta { color: #475569; margin-bottom: 2px; }
+      .trace-metrics { margin-top: 10px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+      .trace-metrics h3 { margin: 0 0 8px; font-size: 12px; color: #0f172a; }
+      .trace-metrics-table-wrap { max-height: 190px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+      .trace-metrics table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+      .trace-metrics th, .trace-metrics td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; text-align: left; vertical-align: top; }
+      .trace-metrics th { position: sticky; top: 0; background: #f8fafc; color: #334155; z-index: 1; }
+      .trace-metrics td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .trace-metrics-empty { font-size: 12px; color: #64748b; padding: 6px 2px 2px; }
       .faq-follow-wrap { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
       button.faq-follow-btn {
         border: 1px solid #cbd5e1;
@@ -120,6 +168,11 @@
               <div id="trace-openai" class="trace-log"></div>
             </div>
           </div>
+          <div class="trace-metrics">
+            <h3>단계별 소요시간 (병목 확인)</h3>
+            <div id="trace-metrics-table-wrap" class="trace-metrics-table-wrap"></div>
+            <div id="trace-metrics-empty" class="trace-metrics-empty">아직 처리 데이터가 없습니다.</div>
+          </div>
         </div>
         <form id="chat-form" class="composer">
           <textarea id="message" placeholder="메시지를 입력하세요"></textarea>
@@ -138,6 +191,8 @@
         const traceSearchEl = document.getElementById("trace-search");
         const traceRrfEl = document.getElementById("trace-rrf");
         const traceOpenaiEl = document.getElementById("trace-openai");
+        const traceMetricsWrapEl = document.getElementById("trace-metrics-table-wrap");
+        const traceMetricsEmptyEl = document.getElementById("trace-metrics-empty");
         const catChipsEl = document.getElementById("cat-chips");
         const catStatusEl = document.getElementById("cat-status");
         const catBtns = Array.from(document.querySelectorAll(".cat-btn"));
@@ -148,10 +203,123 @@
         function addMessage(role, text) {
           const box = document.createElement("div");
           box.className = "msg " + (role === "user" ? "user" : "bot");
-          box.textContent = text;
+          const textEl = document.createElement("div");
+          textEl.className = "msg-text";
+          textEl.textContent = text;
+          box.appendChild(textEl);
           log.appendChild(box);
           log.scrollTop = log.scrollHeight;
           return box;
+        }
+
+        /** FAQ·자유채팅 공통: 봇이 입력하는 듯한 대기 버블 */
+        function showBotTypingPlaceholder() {
+          const loadingBox = document.createElement("div");
+          loadingBox.className = "msg bot";
+          loadingBox.textContent = "답변 준비 중";
+          log.appendChild(loadingBox);
+          log.scrollTop = log.scrollHeight;
+          let dot = 0;
+          const loadingTimer = window.setInterval(function () {
+            dot = (dot + 1) % 4;
+            loadingBox.textContent = "답변 준비 중" + ".".repeat(dot);
+            log.scrollTop = log.scrollHeight;
+          }, 240);
+          return {
+            el: loadingBox,
+            stop: function () {
+              window.clearInterval(loadingTimer);
+            },
+            remove: function () {
+              if (loadingBox.parentNode) loadingBox.remove();
+            },
+            stopAndRemove: function () {
+              this.stop();
+              this.remove();
+            },
+          };
+        }
+
+        function takeNextDisplayChunk(s) {
+          if (!s) return "";
+          if (/^\s/.test(s)) {
+            const m = s.match(/^\s+/);
+            return m ? m[0] : s[0];
+          }
+          const m = s.match(/^[^\s]+/);
+          return m ? m[0] : s[0];
+        }
+
+        function parseSsePayloadData(raw) {
+          if (raw == null || raw === "") return raw;
+          try {
+            return JSON.parse(raw);
+          } catch (e) {
+            return raw;
+          }
+        }
+
+        function renderSuggestionCarousel(botBox, cards) {
+          if (!Array.isArray(cards) || !cards.length) return;
+          if (botBox.querySelector(".suggestion-carousel")) return;
+          const wrap = document.createElement("div");
+          wrap.className = "suggestion-carousel";
+          const track = document.createElement("div");
+          track.className = "suggestion-track";
+          cards.forEach(function (c) {
+            const imgUrl = String(c.image_url || "").trim();
+            const kind = String(c.entity_kind || "");
+            const follow = String(c.follow_prompt || "").trim();
+            const card = document.createElement("article");
+            card.className = "suggestion-card";
+            const thumb = document.createElement("div");
+            thumb.className = "suggestion-thumb";
+            if (imgUrl) {
+              const im = document.createElement("img");
+              im.src = imgUrl;
+              im.alt = "";
+              im.referrerPolicy = "no-referrer";
+              im.loading = "lazy";
+              im.onerror = function () {
+                thumb.innerHTML = "";
+                const ph = document.createElement("span");
+                ph.className = "suggestion-thumb-ph";
+                ph.textContent = kind === "exhibit_item" ? "이미지 없음 · 제품" : "이미지 없음 · 기업";
+                thumb.appendChild(ph);
+              };
+              thumb.appendChild(im);
+            } else {
+              const ph = document.createElement("span");
+              ph.className = "suggestion-thumb-ph";
+              ph.textContent = kind === "exhibit_item" ? "이미지 없음 · 제품" : "이미지 없음 · 기업";
+              thumb.appendChild(ph);
+            }
+            const body = document.createElement("div");
+            body.className = "suggestion-body";
+            const t = document.createElement("div");
+            t.className = "suggestion-title";
+            t.textContent = c.title || "";
+            const st = document.createElement("div");
+            st.className = "suggestion-sub";
+            st.textContent = c.subtitle || "";
+            body.appendChild(t);
+            body.appendChild(st);
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "suggestion-detail-btn";
+            btn.textContent = "자세히 보기";
+            btn.addEventListener("click", function () {
+              input.value = follow || (String(c.title || "") + "에 대해 자세히 알려줘");
+              input.focus();
+              form.requestSubmit();
+            });
+            card.appendChild(thumb);
+            card.appendChild(body);
+            card.appendChild(btn);
+            track.appendChild(card);
+          });
+          wrap.appendChild(track);
+          botBox.appendChild(wrap);
         }
 
         async function getJson(url) {
@@ -161,6 +329,18 @@
             throw new Error(typeof payload.detail === "string" ? payload.detail : "요청 실패");
           }
           return payload;
+        }
+
+        /** CSV에 quickmenu_label이 비어 있을 때 칩 문구 (API의 quickmenu_display_label과 동일 규칙). */
+        function quickmenuDisplayLabel(it) {
+          if (!it || typeof it !== "object") return "";
+          const d = String(it.quickmenu_display_label || "").trim();
+          if (d) return d;
+          for (const k of ["quickmenu_label", "subcategory", "category", "domain"]) {
+            const v = String(it[k] || "").trim();
+            if (v && v !== "-") return v;
+          }
+          return String(it.qna_code || "").trim();
         }
 
         async function loadPrimaryCategories(userType) {
@@ -178,7 +358,7 @@
               const chip = document.createElement("button");
               chip.type = "button";
               chip.className = "cat-chip";
-              chip.textContent = item.quickmenu_label || item.qna_code;
+              chip.textContent = quickmenuDisplayLabel(item);
               chip.addEventListener("click", async () => {
                 await showStoredAnswer(item.qna_code, true);
               });
@@ -193,7 +373,7 @@
         function addFaqAnswerMessage(item, followItems) {
           const answerText = (item.answer_sample || item.answer_question || "저장된 답변이 없습니다.").trim();
           const linkText = (item.links || "").trim();
-          return "A. " + answerText + (linkText ? ("\\n링크: " + linkText) : "");
+          return "A. " + answerText + (linkText ? ("\n링크: " + linkText) : "");
         }
 
         function sleep(ms) {
@@ -201,29 +381,18 @@
         }
 
         async function streamFaqAnswerLikeSearch(item, followItems) {
-          // 1초 정도 로딩 버블을 먼저 보여줘서 일반 채팅 응답 대기감과 유사하게 만든다.
-          const loadingBox = document.createElement("div");
-          loadingBox.className = "msg bot";
-          loadingBox.textContent = "답변 준비 중";
-          log.appendChild(loadingBox);
-          log.scrollTop = log.scrollHeight;
-
-          let dot = 0;
-          const loadingTimer = window.setInterval(() => {
-            dot = (dot + 1) % 4;
-            loadingBox.textContent = "답변 준비 중" + ".".repeat(dot);
-            log.scrollTop = log.scrollHeight;
-          }, 240);
-
+          const load = showBotTypingPlaceholder();
           statusEl.classList.remove("error");
           statusEl.textContent = "FAQ 응답 생성 대기 중...";
           await sleep(1000);
-          window.clearInterval(loadingTimer);
-          loadingBox.remove();
+          load.stopAndRemove();
 
           const botBox = document.createElement("div");
           botBox.className = "msg bot";
-          botBox.textContent = "";
+          const faqTextEl = document.createElement("div");
+          faqTextEl.className = "msg-text";
+          faqTextEl.textContent = "";
+          botBox.appendChild(faqTextEl);
           log.appendChild(botBox);
           log.scrollTop = log.scrollHeight;
 
@@ -232,7 +401,7 @@
           const finalText = addFaqAnswerMessage(item, followItems);
           const tokens = finalText.split(/(\s+)/);
           for (const tk of tokens) {
-            botBox.textContent += tk;
+            faqTextEl.textContent += tk;
             log.scrollTop = log.scrollHeight;
             await sleep(16 + Math.floor(Math.random() * 18));
           }
@@ -244,7 +413,7 @@
               const b = document.createElement("button");
               b.type = "button";
               b.className = "faq-follow-btn";
-              b.textContent = n.quickmenu_label || n.qna_code;
+              b.textContent = quickmenuDisplayLabel(n);
               b.addEventListener("click", async () => {
                 await showStoredAnswer(n.qna_code, true);
               });
@@ -259,7 +428,7 @@
           try {
             const detail = await getJson("/tools/embedding/api/qa-quickmenu/" + encodeURIComponent(qnaCode));
             const item = detail.item || {};
-            const qText = (item.question_sample || item.quickmenu_label || item.qna_code || qnaCode).trim();
+            const qText = (item.question_sample || quickmenuDisplayLabel(item) || qnaCode).trim();
             if (qText) {
               input.value = qText; // 질문 UI에 자동 반영
               addMessage("user", qText);
@@ -277,7 +446,7 @@
                   const code = String(r.resolved_qna_code || r.code || "").trim();
                   return {
                     qna_code: code || String(r.code || "").trim(),
-                    quickmenu_label: it.quickmenu_label || code || String(r.code || "").trim(),
+                    quickmenu_label: quickmenuDisplayLabel(it) || code || String(r.code || "").trim(),
                   };
                 });
               } else {
@@ -308,24 +477,125 @@
           return payload.request_id;
         }
 
-        function streamAnswer(requestId, targetEl) {
-          return new Promise((resolve, reject) => {
-            const es = new EventSource("/stream/" + encodeURIComponent(requestId));
-            es.addEventListener("token", (evt) => {
-              targetEl.textContent += (targetEl.textContent ? " " : "") + evt.data;
+        function streamAnswer(requestId, loadHandle) {
+          const load = loadHandle || showBotTypingPlaceholder();
+          let botBox = null;
+          let textEl = null;
+          let fullText = "";
+          let displayedLen = 0;
+          let drainTimer = null;
+          let doneReceived = false;
+          let settled = false;
+
+          function settleOk() {
+            if (settled) return;
+            settled = true;
+            if (drainTimer) {
+              window.clearInterval(drainTimer);
+              drainTimer = null;
+            }
+            resolveFn();
+          }
+
+          function settleErr(err) {
+            if (settled) return;
+            settled = true;
+            if (drainTimer) {
+              window.clearInterval(drainTimer);
+              drainTimer = null;
+            }
+            load.stopAndRemove();
+            rejectFn(err);
+          }
+
+          function tryFinishTyping() {
+            if (!doneReceived) return;
+            if (textEl && displayedLen < fullText.length) return;
+            settleOk();
+          }
+
+          function ensureBotBox() {
+            if (botBox) return;
+            load.stopAndRemove();
+            botBox = document.createElement("div");
+            botBox.className = "msg bot";
+            textEl = document.createElement("div");
+            textEl.className = "msg-text";
+            textEl.textContent = "";
+            botBox.appendChild(textEl);
+            log.appendChild(botBox);
+            log.scrollTop = log.scrollHeight;
+          }
+
+          function startDrainIfNeeded() {
+            if (drainTimer || !textEl) return;
+            drainTimer = window.setInterval(function () {
+              if (!textEl) return;
+              const backlog = fullText.length - displayedLen;
+              const bursts = backlog > 200 ? 6 : backlog > 100 ? 4 : backlog > 40 ? 2 : 1;
+              for (let b = 0; b < bursts && displayedLen < fullText.length; b++) {
+                const rest = fullText.slice(displayedLen);
+                const chunk = takeNextDisplayChunk(rest);
+                displayedLen += chunk.length;
+                textEl.textContent = fullText.slice(0, displayedLen);
+              }
               log.scrollTop = log.scrollHeight;
+              tryFinishTyping();
+            }, 18);
+          }
+
+          let resolveFn = function () {};
+          let rejectFn = function () {};
+
+          return new Promise(function (resolve, reject) {
+            resolveFn = resolve;
+            rejectFn = reject;
+            const es = new EventSource("/stream/" + encodeURIComponent(requestId));
+            es.addEventListener("token", function (evt) {
+              const piece = parseSsePayloadData(evt.data);
+              const add = typeof piece === "string" ? piece : String(piece || "");
+              fullText += add;
+              ensureBotBox();
+              statusEl.textContent = "응답을 작성하는 중...";
+              startDrainIfNeeded();
             });
-            es.addEventListener("done", () => {
-              es.close();
-              resolve();
+            es.addEventListener("cards", function (evt) {
+              const cards = parseSsePayloadData(evt.data);
+              if (Array.isArray(cards) && cards.length) {
+                ensureBotBox();
+                renderSuggestionCarousel(botBox, cards);
+                log.scrollTop = log.scrollHeight;
+              }
             });
-            es.addEventListener("error", (evt) => {
+            es.addEventListener("done", function () {
+              doneReceived = true;
               es.close();
-              reject(new Error(evt.data || "스트림 오류"));
+              if (textEl) {
+                if (displayedLen >= fullText.length) {
+                  settleOk();
+                } else {
+                  startDrainIfNeeded();
+                }
+              } else if (!fullText) {
+                load.stopAndRemove();
+                addMessage("bot", "응답이 없습니다.");
+                settleOk();
+              } else {
+                ensureBotBox();
+                startDrainIfNeeded();
+              }
+              tryFinishTyping();
+            });
+            es.addEventListener("error", function (evt) {
+              es.close();
+              const d = parseSsePayloadData(evt.data);
+              settleErr(new Error(typeof d === "string" ? d : "스트림 오류"));
             });
             es.onerror = function () {
+              if (settled) return;
+              if (doneReceived) return;
               es.close();
-              reject(new Error("SSE 연결이 종료되었습니다."));
+              settleErr(new Error("SSE 연결이 종료되었습니다."));
             };
           });
         }
@@ -345,6 +615,8 @@
           traceSearchEl.innerHTML = "";
           traceRrfEl.innerHTML = "";
           traceOpenaiEl.innerHTML = "";
+          traceMetricsWrapEl.innerHTML = "";
+          traceMetricsEmptyEl.style.display = "block";
           (items || []).forEach(function (item) {
             const stage = String(item.stage || "");
             if (stage === "retrieval_step_4" || stage === "retrieval_step_1" || stage === "retrieval_step_2" || stage === "retrieval_step_3") {
@@ -359,6 +631,42 @@
               _appendTrace(traceSearchEl, item);
             }
           });
+          const metricRows = (items || [])
+            .map(function (item) {
+              const stage = String(item.stage || "");
+              if (!stage.startsWith("retrieval_step_")) return null;
+              const data = (item && typeof item.data === "object" && item.data) ? item.data : {};
+              const step = Number(data.step);
+              const stepElapsed = Number(data.step_elapsed_ms);
+              const totalElapsed = Number(data.pipeline_elapsed_ms);
+              return {
+                step: Number.isFinite(step) ? step : 999,
+                stage: stage,
+                title: String(data.title || item.detail || "-"),
+                stepElapsed: Number.isFinite(stepElapsed) ? stepElapsed : null,
+                totalElapsed: Number.isFinite(totalElapsed) ? totalElapsed : null,
+              };
+            })
+            .filter(Boolean)
+            .sort(function (a, b) { return a.step - b.step; });
+          if (metricRows.length) {
+            traceMetricsEmptyEl.style.display = "none";
+            const table = document.createElement("table");
+            table.innerHTML =
+              "<thead><tr><th>step</th><th>title</th><th>stage</th><th>step ms</th><th>total ms</th></tr></thead>" +
+              "<tbody>" +
+              metricRows.map(function (r) {
+                return "<tr>" +
+                  "<td class='num'>" + r.step + "</td>" +
+                  "<td>" + r.title + "</td>" +
+                  "<td>" + r.stage + "</td>" +
+                  "<td class='num'>" + (r.stepElapsed == null ? "-" : String(r.stepElapsed)) + "</td>" +
+                  "<td class='num'>" + (r.totalElapsed == null ? "-" : String(r.totalElapsed)) + "</td>" +
+                  "</tr>";
+              }).join("") +
+              "</tbody>";
+            traceMetricsWrapEl.appendChild(table);
+          }
           traceSearchEl.scrollTop = traceSearchEl.scrollHeight;
           traceRrfEl.scrollTop = traceRrfEl.scrollHeight;
           traceOpenaiEl.scrollTop = traceOpenaiEl.scrollHeight;
@@ -389,13 +697,15 @@
           sendBtn.disabled = true;
           statusEl.classList.remove("error");
           statusEl.textContent = "요청을 큐에 등록하는 중...";
+          const chatLoad = showBotTypingPlaceholder();
 
-          const botEl = addMessage("bot", "");
           try {
             const requestId = await enqueueChat(text);
             traceSearchEl.innerHTML = "";
             traceRrfEl.innerHTML = "";
             traceOpenaiEl.innerHTML = "";
+            traceMetricsWrapEl.innerHTML = "";
+            traceMetricsEmptyEl.style.display = "block";
             await pollTrace(requestId);
             if (traceTimer) {
               window.clearInterval(traceTimer);
@@ -403,12 +713,13 @@
             traceTimer = window.setInterval(function () {
               pollTrace(requestId).catch(function () {});
             }, 800);
-            statusEl.textContent = "워커 응답을 스트리밍으로 수신 중...";
-            await streamAnswer(requestId, botEl);
+            statusEl.textContent = "워커 응답을 기다리는 중...";
+            await streamAnswer(requestId, chatLoad);
             await pollTrace(requestId);
             statusEl.textContent = "완료";
           } catch (err) {
-            botEl.textContent = "오류: " + (err.message || String(err));
+            chatLoad.stopAndRemove();
+            addMessage("bot", "오류: " + (err.message || String(err)));
             statusEl.classList.add("error");
             statusEl.textContent = "오류가 발생했습니다.";
           } finally {

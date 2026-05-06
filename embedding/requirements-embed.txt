@@ -1,0 +1,4 @@
+# torch 는 반드시 먼저 설치할 것(CPU: PyTorch 공식 인덱스 → 디스크·다운로드 절약).
+# install_deps.sh 가 순서 보장.
+
+sentence-transformers>=3.3.0,<4.0

@@ -3,9 +3,39 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.rag.pipeline import embed_query_text, search_embedding_tables
+from app.rag.pipeline import embed_queries_text, embed_query_text, search_embedding_tables
+from app.rag.retrieval.types import RetrievalConfig
 
 logger = logging.getLogger(__name__)
+
+
+def semantic_rrf_cutoff_bundle_sync(
+    *,
+    queries: list[str],
+    cfg: RetrievalConfig,
+    search_lang: str,
+    embedding_remote_base_url: str | None,
+    entity_scope: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], str]:
+    """의미 검색 → RRF → 컷오프를 한 블록으로 묶음. asyncio 루프 스레드 밖 실행용."""
+    searches = semantic_search_multi_query(
+        queries=queries,
+        model_id=cfg.model_id,
+        device=cfg.device,
+        top_k_per_query=cfg.top_k_per_query,
+        lang=search_lang,
+        evidence_ratio=cfg.evidence_ratio,
+        embedding_remote_base_url=embedding_remote_base_url,
+        entity_scope=entity_scope,
+    )
+    fused = rrf_fuse(searches, rrf_k=cfg.rrf_k)
+    final_results, llm_context = apply_cutoff_and_build_context(
+        fused,
+        score_cutoff=cfg.score_cutoff,
+        final_top_k=cfg.final_top_k,
+        context_limit=cfg.context_limit,
+    )
+    return searches, fused, final_results, llm_context
 
 
 def _normalize_row(row: dict[str, Any], rank: int) -> dict[str, Any]:
@@ -16,6 +46,50 @@ def _normalize_row(row: dict[str, Any], rank: int) -> dict[str, Any]:
     if not isinstance(distance, (int, float)):
         distance = 1.0
     return {**row, "score": float(score), "distance": float(distance), "rank": rank}
+
+
+def _single_query_search(
+    q: str,
+    *,
+    model_id: str,
+    device: str | None,
+    profile_k: int,
+    evidence_k: int,
+    top_k_per_query: int,
+    lang: str,
+    embedding_remote_base_url: str | None,
+    entity_scope: str,
+    qvec: list[float] | None = None,
+) -> dict[str, Any]:
+    logger.info("[retrieval][step4] semantic_search query=%s", q)
+    if qvec is None:
+        qvec = embed_query_text(q, model_id=model_id, device=device, remote_base_url=embedding_remote_base_url)
+    profile_rows = search_embedding_tables(
+        query_embedding=qvec,
+        model_id=model_id,
+        top_k=profile_k,
+        lang=lang,
+        chunk_type="profile",
+        entity_scope=entity_scope,
+    )
+    evidence_rows = search_embedding_tables(
+        query_embedding=qvec,
+        model_id=model_id,
+        top_k=evidence_k,
+        lang=lang,
+        chunk_type="evidence",
+        entity_scope=entity_scope,
+    )
+    merged = sorted(profile_rows + evidence_rows, key=lambda x: x.get("distance", 1.0))[:top_k_per_query]
+    normalized = [_normalize_row(row, rank=i) for i, row in enumerate(merged, start=1)]
+    logger.info(
+        "[retrieval][step4] query=%s profile=%d evidence=%d merged=%d",
+        q,
+        len(profile_rows),
+        len(evidence_rows),
+        len(normalized),
+    )
+    return {"query": q, "results": normalized}
 
 
 def semantic_search_multi_query(
@@ -29,33 +103,52 @@ def semantic_search_multi_query(
     embedding_remote_base_url: str | None = None,
     entity_scope: str = "all",
 ) -> list[dict[str, Any]]:
-    searches: list[dict[str, Any]] = []
+    if not queries:
+        return []
+    normalized = [str(q or "") for q in queries]
+    idx_nonempty = [i for i, q in enumerate(normalized) if q.strip()]
     evidence_k = max(1, int(top_k_per_query * evidence_ratio))
     profile_k = max(1, top_k_per_query - evidence_k)
-    for q in queries:
-        logger.info("[retrieval][step4] semantic_search query=%s", q)
-        qvec = embed_query_text(q, model_id=model_id, device=device, remote_base_url=embedding_remote_base_url)
-        profile_rows = search_embedding_tables(
-            query_embedding=qvec,
-            model_id=model_id,
-            top_k=profile_k,
-            lang=lang,
-            chunk_type="profile",
-            entity_scope=entity_scope,
+
+    if not idx_nonempty:
+        return [{"query": q, "results": []} for q in normalized]
+
+    texts = [normalized[i] for i in idx_nonempty]
+    vec_list = embed_queries_text(
+        texts,
+        model_id=model_id,
+        device=device,
+        remote_base_url=embedding_remote_base_url,
+    )
+    logger.info("[retrieval][step4] batch_embed + sequential DB queries=%d", len(idx_nonempty))
+
+    non_empty_buckets: list[dict[str, Any]] = []
+    for j in range(len(idx_nonempty)):
+        i = idx_nonempty[j]
+        q = normalized[i]
+        non_empty_buckets.append(
+            _single_query_search(
+                q,
+                model_id=model_id,
+                device=device,
+                profile_k=profile_k,
+                evidence_k=evidence_k,
+                top_k_per_query=top_k_per_query,
+                lang=lang,
+                embedding_remote_base_url=None,
+                entity_scope=entity_scope,
+                qvec=vec_list[j],
+            )
         )
-        evidence_rows = search_embedding_tables(
-            query_embedding=qvec,
-            model_id=model_id,
-            top_k=evidence_k,
-            lang=lang,
-            chunk_type="evidence",
-            entity_scope=entity_scope,
-        )
-        merged = sorted(profile_rows + evidence_rows, key=lambda x: x.get("distance", 1.0))[:top_k_per_query]
-        normalized = [_normalize_row(row, rank=i) for i, row in enumerate(merged, start=1)]
-        searches.append({"query": q, "results": normalized})
-        logger.info("[retrieval][step4] query=%s profile=%d evidence=%d merged=%d", q, len(profile_rows), len(evidence_rows), len(normalized))
-    return searches
+
+    it = iter(non_empty_buckets)
+    out: list[dict[str, Any]] = []
+    for q in normalized:
+        if not q.strip():
+            out.append({"query": q, "results": []})
+        else:
+            out.append(next(it))
+    return out
 
 
 def rrf_fuse(searches: list[dict[str, Any]], *, rrf_k: int = 60) -> list[dict[str, Any]]:

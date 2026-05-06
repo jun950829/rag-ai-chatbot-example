@@ -1,5 +1,6 @@
-redis>=5.0.0
-sqlalchemy>=2.0.0
-asyncpg>=0.30.0
-pydantic-settings>=2.0.0
-httpx>=0.27,<1.0
+# 이 파일만으로는 벡터 모델 없음(코어만). 벡터화 전체(CPU 경량 경로 — CUDA 번들 미사용):
+#   cd embedding && bash install_deps.sh cpu
+#
+# 디스크·네트워크 여유 시 한 번에(CUDA 번들 포함, 수 GB):
+#   pip install --no-cache-dir -r requirements-full-cuda.txt
+-r requirements-core.txt

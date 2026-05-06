@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import threading
@@ -26,6 +27,7 @@ from app.rag.pipeline import (
     DEFAULT_EMBEDDING_DEVICE,
     DEFAULT_EMBEDDING_MODEL_ID,
     _build_embeddings,
+    _embed_texts,
     _fetch_koba_exhibit_item_rows,
     _fetch_koba_exhibitor_rows,
     _upsert_embeddings,
@@ -52,6 +54,7 @@ def root() -> dict[str, Any]:
         "endpoints": {
             "health": "GET /health",
             "embed_query": "POST /v1/embed/query",
+            "embed_queries": "POST /v1/embed/queries",
             "embed_sync": "POST /embed",
             "embed_job": "POST /embed/job",
             "embed_job_status": "GET /embed/job/{job_id}/status",
@@ -79,6 +82,46 @@ def embed_query_endpoint(
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"임베딩 모델 로드 실패: {e}") from e
     return JSONResponse({"embedding": vec, "embedding_dim": len(vec), "model_id": model_id})
+
+
+@app.post("/v1/embed/queries")
+def embed_queries_endpoint(
+    queries: str = Form(..., description="JSON 배열 문자열, 예: [\"q1\",\"q2\"]"),
+    model_id: str = Form(default=os.environ.get("EMBEDDING_MODEL_ID", DEFAULT_EMBEDDING_MODEL_ID)),
+    device: str = Form(default=DEFAULT_EMBEDDING_DEVICE),
+) -> JSONResponse:
+    try:
+        parsed = json.loads(queries)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"queries JSON 파싱 실패: {e}") from e
+    if not isinstance(parsed, list):
+        raise HTTPException(status_code=400, detail="queries는 JSON 배열이어야 합니다.")
+    if not parsed:
+        raise HTTPException(status_code=400, detail="queries가 비어 있습니다.")
+    if len(parsed) > 16:
+        raise HTTPException(status_code=400, detail="queries는 최대 16개까지 허용됩니다.")
+    cleaned: list[str] = []
+    for x in parsed:
+        s = str(x).strip()
+        if not s:
+            raise HTTPException(status_code=400, detail="queries 항목에 빈 문자열이 있습니다.")
+        cleaned.append(s)
+    try:
+        vecs = _embed_texts(cleaned, model_id=model_id, device=device or None, batch_size=min(32, len(cleaned)))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"임베딩 모델 로드 실패: {e}") from e
+    if len(vecs) != len(cleaned):
+        raise HTTPException(status_code=500, detail="배치 임베딩 결과 개수가 입력과 일치하지 않습니다.")
+    return JSONResponse(
+        {
+            "embeddings": vecs,
+            "count": len(vecs),
+            "embedding_dim": len(vecs[0]) if vecs else 0,
+            "model_id": model_id,
+        }
+    )
 
 
 def _resolve_target_rows(

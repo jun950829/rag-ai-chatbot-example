@@ -25,6 +25,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-api.txt
 pip install -r embedding/requirements.txt
+cd embedding && bash install_deps.sh cpu
+cd ..
 export PYTHONPATH="$(pwd)/main"
 uvicorn embedding.main:app --host 0.0.0.0 --port 8765
 ```

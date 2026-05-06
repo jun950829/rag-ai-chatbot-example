@@ -2,34 +2,93 @@
 
 흐름 요약:
 1. ``session_id`` 가 있으면 Async DB에서 ``ConversationMemory`` 적재·히스토리 여부 계산
-2. ``execute_retrieval_pipeline`` — 의도/검색축 분류 → (검색형이면) 쿼리 계획 → pgvector 다중 쿼리 검색 → RRF·컷오프
+2. ``execute_retrieval_pipeline`` — 의도/검색축 분류(선택적 OpenAI) → 휴리스틱 다중 쿼리 계획 → pgvector 검색 → RRF·컷오프
 3. 세션 모드에서는 **분류·검색이 끝난 뒤** ``MessageService.save_user_message`` 로 intent·``retrieval_topic``·follow-up 메타 저장
 4. 답변: 템플릿 또는 OpenAI (``answer_mode``)
+
+검색 부하·의도 OpenAI 여부는 ``get_settings()`` 및 ``run_vector_search(..., intent_use_openai=..., retrieval_*=...)`` 로 조정.
 
 자세한 구조는 저장소 루트 ``docs/CHATBOT_ARCHITECTURE.md`` 참고.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from functools import partial
 from typing import Any
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 
-from app.rag.pipeline import build_korean_search_answer
+from app.core.config import get_settings
+from app.db.conversation_sync_store import (
+    sync_load_memory_for_session,
+    sync_save_assistant_message,
+    sync_save_user_message,
+)
+from app.rag.pipeline import (
+    build_korean_search_answer,
+    engine as _sync_search_db_engine,
+    format_search_results_for_llm_context,
+)
 from app.rag.retrieval.memory import ConversationMemory
 from app.rag.retrieval import RetrievalConfig, execute_retrieval_pipeline
+from app.rag.suggestion_cards import build_retrieval_suggestion_cards
 
 logger = logging.getLogger(__name__)
 _DEFAULT_MEMORY = ConversationMemory(max_turns=5)
+_ANSWER_OPENAI_MODEL = "gpt-5-mini"
+
+
+def _sync_chat_completions_text(
+    *,
+    api_key: str,
+    base_url: str | None,
+    model: str,
+    messages: list[dict[str, Any]],
+) -> str:
+    """동기 OpenAI 클라이언트(Chat Completions). AsyncOpenAI 는 같은 이벤트 루프에서 SQLAlchemy 와 섞일 때 MissingGreenlet 이 날 수 있어 스레드에서 이 경로만 쓴다."""
+
+    kwargs: dict[str, Any] = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    client = OpenAI(**kwargs)
+    resp = client.chat.completions.create(model=model, messages=messages)
+    return ((resp.choices[0].message.content) or "").strip() or "LLM이 빈 답변을 반환했습니다."
+
+
+def _answer_base_url_norm(base: str) -> str | None:
+    b = (base or "").strip()
+    return b or None
+
+
+def _answer_style_hints(
+    *,
+    intent: str,
+    retrieval_topic: str | None,
+    is_dialog_followup: bool,
+) -> str:
+    """시스템 프롬프트에만 쓰는 짧은 톤 힌트 (사용자 메시지에는 넣지 않음)."""
+    rt = (retrieval_topic or "all").strip().lower()
+    parts: list[str] = []
+    if is_dialog_followup:
+        parts.append("직전 대화 맥락을 이어 받은 질문일 수 있으니, 생략된 주어를 자연스럽게 보완해도 된다.")
+    if intent == "product" or rt == "product":
+        parts.append("전시품·제품 정보 위주로 정리한다.")
+    elif intent == "company" or rt == "company":
+        parts.append("참가업체(회사) 정보 위주로 정리한다.")
+    else:
+        parts.append("회사와 제품 정보를 균형 있게 다룬다.")
+    return " ".join(parts)
 
 
 async def _generate_korean_answer_with_openai(
     *,
     query: str,
     results: list[dict[str, Any]],
-    client: AsyncOpenAI,
+    api_key: str,
+    base_url: str,
     model: str,
     intent: str,
     language: str,
@@ -39,84 +98,93 @@ async def _generate_korean_answer_with_openai(
     if not results:
         return "검색 결과가 없어 답변을 생성할 수 없습니다."
 
-    lines: list[str] = []
-    for i, r in enumerate(results[:6], start=1):
-        score = r.get("score")
-        score_txt = f"{float(score):.4f}" if isinstance(score, (int, float)) else "-"
-        content = (r.get("content") or "").strip().replace("\n", " / ")
-        if len(content) > 220:
-            content = content[:220].rstrip() + "..."
-        lines.append(
-            f"[{i}] score={score_txt}, lang={r.get('lang')}, type={r.get('chunk_typ')}, "
-            f"external_id={r.get('external_id')}, source_field={r.get('source_field')}, content={content}"
-        )
-    context_text = "\n".join(lines)
-    # --- 단계: 답변 LLM에 라우팅 intent와 검색 축·후행 여부를 함께 넘겨 톤을 맞춘다 ---
-    rt = (retrieval_topic or "all").strip().lower()
-    fu_txt = "직전 대화를 이어 받는 후행 질문" if is_dialog_followup else "신규 검색형 질문"
-    user_tone = (
-        f"질문 의도={intent}, 검색축={rt}, 대화특성={fu_txt}"
-        if intent not in {"company", "product"} or is_dialog_followup
-        else f"질문 의도가 명확한 검색 요청 (축={rt})"
-    )
+    context_text = format_search_results_for_llm_context(results)
     language_rule = "한국어로 답변" if language == "ko" else "기본은 한국어, 필요 시 핵심 영문 키워드 병기"
-    resp = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "너는 전시 참가업체 검색 도우미다. "
-                    f"{language_rule}. "
-                    "주어진 검색 결과만 근거로 답한다. 근거가 약하면 추정하지 말고 한계를 명시한다. "
-                    "질문의 뉘앙스(비교/추천/요약/조건 필터)를 먼저 파악하고 그 의도에 맞는 형식으로 정리한다. "
-                    "답변은 간결하되 실무적으로 유용해야 한다."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"질문: {query}\n\n"
-                    f"의도 분류: {intent} | 검색축: {rt} | 후행: {is_dialog_followup}\n"
-                    f"질문 톤 해석: {user_tone}\n\n"
-                    f"검색 결과:\n{context_text}\n\n"
-                    "요청:\n"
-                    "1) 질문 의도에 맞게 핵심만 정제해서 답변\n"
-                    "2) 추천/비교라면 선택 이유를 근거와 함께 제시\n"
-                    "3) 마지막에 '근거 요약'을 한 줄로 정리"
-                ),
-            },
-        ],
+    style = _answer_style_hints(
+        intent=intent,
+        retrieval_topic=retrieval_topic,
+        is_dialog_followup=is_dialog_followup,
     )
-    return ((resp.choices[0].message.content) or "").strip() or "LLM이 빈 답변을 반환했습니다."
+    logger.info(
+        "[answer] openai_generate(sync via thread) start query_len=%d results=%d context_chars=%d",
+        len(query or ""),
+        len(results),
+        len(context_text),
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "너는 전시회 참가기업·전시품 안내를 하는 챗봇이다. "
+                f"{language_rule}. "
+                "아래에 주어진 '프로필'과 '추가 근거'만 사실의 근거로 사용한다. 없는 정보는 지어내지 말고 부족하다고 말한다. "
+                f"{style} "
+                "답변 형식: 긴 산문 대신 **정리형**으로 쓴다. "
+                "예) 첫 줄에 한 줄 요약, 다음은 '·' 불릿으로 핵심만, 필요하면 짧은 소제목(한글) 뒤에 불릿. "
+                "문단 사이에는 반드시 빈 줄(\\n\\n)을 넣어 가독성을 높인다. "
+                "의도 분류·검색 점수·내부 메타데이터 이름을 사용자에게 노출하지 않는다. "
+                "목록에 있는 업체/제품 이름은 아래 카드로 따로 보여 줄 예정이므로, 본문에서는 이름만 언급하고 긴 표 형태 나열은 피한다."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"사용자 질문:\n{query}\n\n"
+                f"참고 자료 (검색 DB에서 가져온 내용):\n{context_text}\n\n"
+                "위 자료만 바탕으로 질문에 답해 줘. "
+                "불릿·소제목·빈 줄을 써서 스크롤 없이도 구조가 보이게 정리해 줘."
+            ),
+        },
+    ]
+    out = await asyncio.to_thread(
+        partial(
+            _sync_chat_completions_text,
+            api_key=api_key,
+            base_url=_answer_base_url_norm(base_url),
+            model=model,
+            messages=messages,
+        )
+    )
+    logger.info("[answer] openai_generate done answer_chars=%d", len(out))
+    return out
 
 
 async def _generate_general_answer_with_openai(
     *,
     query: str,
-    client: AsyncOpenAI,
+    api_key: str,
+    base_url: str,
     model: str,
     language: str,
 ) -> str:
     language_rule = "한국어로 자연스럽게 답변" if language == "ko" else "기본은 한국어, 필요 시 영어 병기"
-    resp = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "너는 사용자 입력에 친절하게 반응하는 도우미다. "
-                    f"{language_rule}. "
-                    "입력 의도와 뉘앙스(테스트, 확인, 요청)를 반영해 짧고 자연스럽게 응답한다."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"사용자 입력: {query}\n이 메시지 의도에 맞게 간단히 응답해줘.",
-            },
-        ],
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "너는 사용자 입력에 친절하게 반응하는 도우미다. "
+                f"{language_rule}. "
+                "짧게, **정리형**으로: 필요하면 첫 줄 요약 후 '·' 불릿. 문단 사이에는 빈 줄을 넣는다."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"사용자 입력: {query}\n이 메시지 의도에 맞게 간단히 응답해줘.",
+        },
+    ]
+    return await asyncio.to_thread(
+        partial(
+            _sync_chat_completions_text,
+            api_key=api_key,
+            base_url=_answer_base_url_norm(base_url),
+            model=model,
+            messages=messages,
+        )
     )
-    return ((resp.choices[0].message.content) or "").strip() or "LLM이 빈 답변을 반환했습니다."
+
+
+def _clamp01(x: float) -> float:
+    return max(0.05, min(0.95, float(x)))
 
 
 async def run_vector_search(
@@ -133,6 +201,14 @@ async def run_vector_search(
     embedding_remote_base_url: str | None,
     memory: ConversationMemory | None = None,
     session_id: str | None = None,
+    intent_use_openai: bool | None = None,
+    retrieval_min_queries: int | None = None,
+    retrieval_max_queries: int | None = None,
+    retrieval_score_cutoff: float | None = None,
+    retrieval_evidence_ratio: float | None = None,
+    retrieval_rrf_k: int | None = None,
+    retrieval_context_limit: int | None = None,
+    retrieval_top_k_per_query: int | None = None,
 ) -> dict[str, Any]:
     if chunk_type not in {"all", "profile", "evidence"}:
         raise ValueError("chunk_type must be one of: all, profile, evidence")
@@ -153,68 +229,79 @@ async def run_vector_search(
     has_history = False
     session_uuid_for_save: uuid.UUID | None = None
     fu_state: tuple[bool, float, dict] | None = None
-    if session_id:
-        from app.db.session import AsyncSessionLocal
-        from app.services import ConversationService, is_followup_v2
+    logger.info(
+        "[search] start query_preview=%s top_k=%s chunk_type=%s answer_mode=%s session=%s",
+        (query or "")[:120],
+        top_k,
+        chunk_type,
+        answer_mode,
+        (session_id or "")[:32] or "-",
+    )
 
-        async with AsyncSessionLocal() as db:
-            conv = ConversationService(db)
-            sid = await conv.get_or_create_session(session_id)
-            db_memory = await conv.hydrate_memory(sid, limit=5)
-            has_history = len(db_memory.get_recent()) > 0
-            hist_texts = [m.get("message", "") for m in db_memory.get_recent()][-5:]
-            is_fu, fu_conf, fu_meta = is_followup_v2(current=query, history=hist_texts)
-            fu_state = (is_fu, fu_conf, fu_meta)
-            session_uuid_for_save = sid
+    if session_id:
+        from app.services import is_followup_v2
+
+        # AsyncSession 피해서 동기 psycopg 엔진으로만 처리 (임베딩 검색과 같은 DB).
+        db_memory, session_uuid_for_save = await asyncio.to_thread(
+            partial(
+                sync_load_memory_for_session,
+                engine=_sync_search_db_engine,
+                browser_session_id=session_id,
+                limit=5,
+            )
+        )
+        has_history = len(db_memory.get_recent()) > 0
+        hist_texts = [m.get("message", "") for m in db_memory.get_recent()][-5:]
+        is_fu, fu_conf, fu_meta = is_followup_v2(current=query, history=hist_texts)
+        fu_state = (is_fu, fu_conf, fu_meta)
+
+    st = get_settings()
+    i_openai = st.retrieval_intent_use_openai if intent_use_openai is None else intent_use_openai
+    min_q = st.retrieval_min_queries if retrieval_min_queries is None else int(retrieval_min_queries)
+    max_q = st.retrieval_max_queries if retrieval_max_queries is None else int(retrieval_max_queries)
+    min_q = max(1, min_q)
+    max_q = max(min_q, max_q)
+    sc = float(st.retrieval_score_cutoff if retrieval_score_cutoff is None else retrieval_score_cutoff)
+    er = _clamp01(float(st.retrieval_evidence_ratio if retrieval_evidence_ratio is None else retrieval_evidence_ratio))
+    rk = max(1, int(st.retrieval_rrf_k if retrieval_rrf_k is None else retrieval_rrf_k))
+    cl = max(1, int(st.retrieval_context_limit if retrieval_context_limit is None else retrieval_context_limit))
+    tkpq_raw = st.retrieval_top_k_per_query if retrieval_top_k_per_query is None else retrieval_top_k_per_query
+    tkpq = max(6, int(top_k)) if tkpq_raw is None else max(1, int(tkpq_raw))
+
+    tuning_meta = {
+        "intent_use_openai": i_openai,
+        "min_queries": min_q,
+        "max_queries": max_q,
+        "score_cutoff": sc,
+        "evidence_ratio": er,
+        "rrf_k": rk,
+        "context_limit": cl,
+        "top_k_per_query": tkpq,
+        "final_top_k": max(1, int(top_k)),
+    }
+    logger.info("[search] retrieval_pipeline ... tuning=%s", tuning_meta)
 
     retrieval_payload = await execute_retrieval_pipeline(
         query,
         config=RetrievalConfig(
             model_id=model_id,
             device=device or None,
-            top_k_per_query=max(6, top_k),
-            final_top_k=max(1, top_k),
-            score_cutoff=0.22,
-            evidence_ratio=0.6,
-            min_queries=3,
-            max_queries=5,
-            rrf_k=60,
-            context_limit=6,
+            top_k_per_query=tkpq,
+            final_top_k=max(1, int(top_k)),
+            score_cutoff=sc,
+            evidence_ratio=er,
+            min_queries=min_q,
+            max_queries=max_q,
+            rrf_k=rk,
+            context_limit=cl,
         ),
         openai_client=openai_client,
         intent_model=openai_model,
+        intent_use_openai=i_openai,
         embedding_remote_base_url=embedding_remote_base_url,
         has_history=has_history,
         memory=db_memory or _DEFAULT_MEMORY,
     )
-
-    # --- 단계 1: 파이프라인 결과로 사용자 메시지 메타를 확정 저장 (세션 모드 전용) ---
-    if session_uuid_for_save is not None:
-        from app.db.session import AsyncSessionLocal
-        from app.services import MessageService
-
-        pip_intent = str(retrieval_payload["intent"])
-        pip_fu = bool(retrieval_payload.get("is_dialog_followup", False))
-        pip_topic = retrieval_payload.get("retrieval_topic")
-        if pip_topic is None:
-            pip_topic = "all"
-        pip_topic = str(pip_topic).strip().lower()
-        if fu_state is not None:
-            _heu_fu, fu_conf, _ = fu_state
-            conf = float(max(fu_conf, 0.55 if pip_fu else 0.35))
-        else:
-            conf = 0.85
-
-        async with AsyncSessionLocal() as db:
-            msg_svc = MessageService(db)
-            await msg_svc.save_user_message(
-                session_id=session_uuid_for_save,
-                content=query,
-                intent=pip_intent,
-                is_followup=pip_fu,
-                confidence=conf,
-                retrieval_topic=pip_topic,
-            )
 
     results = retrieval_payload["final_results"]
     response_mode = retrieval_payload.get("response_mode", "retrieval")
@@ -240,48 +327,53 @@ async def run_vector_search(
         answer_meta = {"mode": "template"}
 
     if response_mode == "retrieval" and answer_mode == "openai":
-        if openai_client is None:
+        if not key:
+            logger.warning("[search] openai requested but OPENAI_API_KEY missing → template")
             answer_meta = {"mode": "template_fallback", "error": "OPENAI_API_KEY is not set", "requested_mode": "openai"}
         else:
             try:
                 answer_korean = await _generate_korean_answer_with_openai(
                     query=query,
                     results=results,
-                    client=openai_client,
-                    model=openai_model,
+                    api_key=key,
+                    base_url=(openai_base_url or "").strip(),
+                    model=_ANSWER_OPENAI_MODEL,
                     intent=retrieval_payload["intent"],
                     language=retrieval_payload["language"],
                     retrieval_topic=retrieval_payload.get("retrieval_topic"),
                     is_dialog_followup=bool(retrieval_payload.get("is_dialog_followup", False)),
                 )
-                answer_meta = {"mode": "openai", "model": openai_model}
+                answer_meta = {"mode": "openai", "model": _ANSWER_OPENAI_MODEL}
             except Exception as e:
-                answer_korean = (
-                    f"[OpenAI 호출 실패로 템플릿 응답으로 대체] {build_korean_search_answer(query, results)} "
-                    f"(원인: {e})"
-                )
+                logger.exception("[search] openai answer generation failed: %s", e)
+                answer_korean = build_korean_search_answer(query, results)
                 answer_meta = {"mode": "template_fallback", "error": str(e), "requested_mode": "openai"}
-    elif response_mode == "general_chat" and answer_mode == "openai":
-        if openai_client is None:
+    elif response_mode == "general_chat":
+        # general intent는 answer_mode와 무관하게 LLM 응답을 우선 시도한다.
+        if not key:
             answer_meta = {
                 "mode": "general_chat_template_fallback",
                 "error": "OPENAI_API_KEY is not set",
-                "requested_mode": "openai",
+                "requested_mode": "openai_for_general",
             }
         else:
             try:
+                logger.info("[answer] general_chat openai …")
                 answer_korean = await _generate_general_answer_with_openai(
                     query=query,
-                    client=openai_client,
-                    model=openai_model,
+                    api_key=key,
+                    base_url=(openai_base_url or "").strip(),
+                    model=_ANSWER_OPENAI_MODEL,
                     language=retrieval_payload["language"],
                 )
-                answer_meta = {"mode": "general_chat_openai", "model": openai_model}
+                answer_meta = {"mode": "general_chat_openai", "model": _ANSWER_OPENAI_MODEL}
+                logger.info("[answer] general_chat openai done chars=%d", len(answer_korean or ""))
             except Exception as e:
+                logger.exception("[answer] general_chat openai failed: %s", e)
                 answer_meta = {
                     "mode": "general_chat_template_fallback",
                     "error": str(e),
-                    "requested_mode": "openai",
+                    "requested_mode": "openai_for_general",
                 }
 
     openai_usage = dict(retrieval_payload.get("openai_usage_summary") or {})
@@ -308,21 +400,60 @@ async def run_vector_search(
     }
     step_logs = list(retrieval_payload.get("step_logs", []))
     step_logs.append(answer_step_log)
+
+    suggestion_cards: list[dict[str, Any]] = []
+    if response_mode == "retrieval" and results:
+        try:
+            suggestion_cards = await build_retrieval_suggestion_cards(results)
+        except Exception as e:
+            logger.warning("[search] suggestion_cards skipped: %s", e)
+
     if memory is None:
         _DEFAULT_MEMORY.add("assistant", answer_korean)
     else:
         memory.add("assistant", answer_korean)
 
-    # (프로덕션) 세션 기반일 때 assistant 메시지 저장
-    if session_id:
-        from app.db.session import AsyncSessionLocal
-        from app.services import ConversationService, MessageService
+    # 세션 DB 저장: 답변·제안 카드까지 성공한 뒤에 수행 (중간 실패 시에도 OpenAI 답변은 반환되게).
+    if session_uuid_for_save is not None:
+        pip_intent = str(retrieval_payload["intent"])
+        pip_fu = bool(retrieval_payload.get("is_dialog_followup", False))
+        pip_topic = retrieval_payload.get("retrieval_topic")
+        if pip_topic is None:
+            pip_topic = "all"
+        pip_topic = str(pip_topic).strip().lower()
+        if fu_state is not None:
+            _heu_fu, fu_conf, _ = fu_state
+            conf = float(max(fu_conf, 0.55 if pip_fu else 0.35))
+        else:
+            conf = 0.85
 
-        async with AsyncSessionLocal() as db:
-            conv = ConversationService(db)
-            msg_svc = MessageService(db)
-            sid = await conv.get_or_create_session(session_id)
-            await msg_svc.save_assistant_message(session_id=sid, content=answer_korean)
+        try:
+            await asyncio.to_thread(
+                partial(
+                    sync_save_user_message,
+                    engine=_sync_search_db_engine,
+                    session_pk=session_uuid_for_save,
+                    content=query,
+                    intent=pip_intent,
+                    is_followup=pip_fu,
+                    confidence=conf,
+                    retrieval_topic=pip_topic,
+                )
+            )
+        except Exception:
+            logger.exception("[search] sync_save_user_message failed (answer still returned)")
+
+        try:
+            await asyncio.to_thread(
+                partial(
+                    sync_save_assistant_message,
+                    engine=_sync_search_db_engine,
+                    session_pk=session_uuid_for_save,
+                    content=answer_korean,
+                )
+            )
+        except Exception:
+            logger.exception("[search] sync_save_assistant_message failed (answer still returned)")
 
     return {
         "query": query,
@@ -342,8 +473,10 @@ async def run_vector_search(
             "response_mode": response_mode,
             "embedding_remote_base_url": (embedding_remote_base_url or "").strip() or None,
             "openai_usage_summary": openai_usage,
+            "tuning_applied": tuning_meta,
         },
         "answer_korean": answer_korean,
         "answer_meta": answer_meta,
         "results": results,
+        "suggestion_cards": suggestion_cards,
     }

@@ -18,18 +18,49 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app.core.config import get_settings
+from app.core.config import get_settings, resolve_openai_api_key, resolve_openai_base_url
 from app.db.repositories.kprint_qa_quickmenu_repository import (
     KprintQaQuickmenuRepository,
     quickmenu_row_to_dict,
 )
-from app.db.session import AsyncSessionLocal
 from app.rag.search_service import run_vector_search
 
 router = APIRouter(tags=["embedding-tool"])
 logger = logging.getLogger(__name__)
 
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
+
+
+def _form_optional_bool(s: str | None) -> bool | None:
+    """빈 값·default → None(환경 설정값 사용). true/false 문자열 파싱."""
+    if s is None:
+        return None
+    t = str(s).strip().lower()
+    if t in ("", "default", "inherit"):
+        return None
+    if t in ("1", "true", "yes", "on"):
+        return True
+    if t in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def _form_optional_int(label: str, s: str | None) -> int | None:
+    if s is None or not str(s).strip():
+        return None
+    try:
+        return int(str(s).strip(), 10)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"{label}는 정수여야 합니다.") from e
+
+
+def _form_optional_float(label: str, s: str | None) -> float | None:
+    if s is None or not str(s).strip():
+        return None
+    try:
+        return float(str(s).strip())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"{label}는 숫자여야 합니다.") from e
 
 
 def _embedding_base(settings) -> str:
@@ -150,7 +181,15 @@ async def embedding_tool_search(
     top_k: int = Form(default=10),
     chunk_type: str = Form(default="all"),
     answer_mode: str = Form(default="template"),
-    openai_model: str = Form(default="gpt-4o-mini"),
+    openai_model: str = Form(default="gpt-5-mini"),
+    intent_use_openai: str | None = Form(default=None),
+    retrieval_min_queries: str | None = Form(default=None),
+    retrieval_max_queries: str | None = Form(default=None),
+    retrieval_score_cutoff: str | None = Form(default=None),
+    retrieval_evidence_ratio: str | None = Form(default=None),
+    retrieval_rrf_k: str | None = Form(default=None),
+    retrieval_context_limit: str | None = Form(default=None),
+    retrieval_top_k_per_query: str | None = Form(default=None),
 ) -> JSONResponse:
     if not (query or "").strip():
         raise HTTPException(status_code=400, detail="검색어가 비어 있습니다.")
@@ -165,10 +204,18 @@ async def embedding_tool_search(
             chunk_type=chunk_type,
             answer_mode=answer_mode,
             openai_model=openai_model,
-            openai_api_key=settings.openai_api_key,
-            openai_base_url=settings.openai_base_url,
+            openai_api_key=resolve_openai_api_key(),
+            openai_base_url=resolve_openai_base_url(),
             embedding_remote_base_url=remote,
             session_id=session_id,
+            intent_use_openai=_form_optional_bool(intent_use_openai),
+            retrieval_min_queries=_form_optional_int("retrieval_min_queries", retrieval_min_queries),
+            retrieval_max_queries=_form_optional_int("retrieval_max_queries", retrieval_max_queries),
+            retrieval_score_cutoff=_form_optional_float("retrieval_score_cutoff", retrieval_score_cutoff),
+            retrieval_evidence_ratio=_form_optional_float("retrieval_evidence_ratio", retrieval_evidence_ratio),
+            retrieval_rrf_k=_form_optional_int("retrieval_rrf_k", retrieval_rrf_k),
+            retrieval_context_limit=_form_optional_int("retrieval_context_limit", retrieval_context_limit),
+            retrieval_top_k_per_query=_form_optional_int("retrieval_top_k_per_query", retrieval_top_k_per_query),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -177,6 +224,12 @@ async def embedding_tool_search(
     except Exception as e:  # noqa: BLE001
         logger.exception("embedding_tool_search failed")
         raise HTTPException(status_code=500, detail=f"검색 처리 실패: {type(e).__name__}: {e}") from e
+    logger.info(
+        "[embedding_api] search ok query_len=%d results=%s answer_mode=%s",
+        len((query or "").strip()),
+        payload.get("count"),
+        (payload.get("answer_meta") or {}).get("mode"),
+    )
     return JSONResponse(payload)
 
 
@@ -189,6 +242,8 @@ async def qa_quickmenu_landing() -> JSONResponse:
 
     실제 1차 질문 목록은 ``primary?qa_user=visitor|exhibitor`` 로 가져온다.
     """
+    from app.db.session import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         repo = KprintQaQuickmenuRepository(db)
         visitor_n = len(await repo.list_primary_rows(qa_user="visitor"))
@@ -235,6 +290,8 @@ async def qa_quickmenu_primary(
     include_prompt: bool = Query(default=False, description="긴 default_answer_prompt 포함 여부"),
 ) -> JSONResponse:
     """``primary_question=true`` 행만 반환 — 챗봇 메인 카테고리 버튼 소스."""
+    from app.db.session import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         repo = KprintQaQuickmenuRepository(db)
         rows = await repo.list_primary_rows(qa_user=qa_user, domain=domain)
@@ -249,6 +306,8 @@ async def qa_quickmenu_by_parent(
     include_prompt: bool = Query(default=False),
 ) -> JSONResponse:
     """같은 ``parent_id`` 그룹 행 — CSV 상 형제/그룹 탐색용."""
+    from app.db.session import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         repo = KprintQaQuickmenuRepository(db)
         rows = await repo.list_by_parent_id(parent_id)
@@ -263,6 +322,8 @@ async def qa_quickmenu_one(
     include_prompt: bool = Query(default=True),
 ) -> JSONResponse:
     """단일 행 상세."""
+    from app.db.session import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         repo = KprintQaQuickmenuRepository(db)
         row = await repo.get_row(qna_code)
@@ -280,6 +341,8 @@ async def qa_quickmenu_follow_links(
     include_prompt: bool = Query(default=False),
 ) -> JSONResponse:
     """해당 행의 ``follow_question*`` / ``default_quickmenu`` 에 나온 ``qna_code`` 순서대로 전개."""
+    from app.db.session import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         repo = KprintQaQuickmenuRepository(db)
         rows = await repo.list_follow_link_rows(qna_code)

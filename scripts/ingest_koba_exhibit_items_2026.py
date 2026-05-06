@@ -15,6 +15,12 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MAIN_ROOT = os.path.join(PROJECT_ROOT, "main")
 sys.path.insert(0, MAIN_ROOT)
 sys.path.insert(1, PROJECT_ROOT)
+_scripts_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _scripts_dir)
+
+import ingest_db_env  # noqa: E402
+
+ingest_db_env.ensure_sync_database_url(main_root=MAIN_ROOT)
 
 from app.db import SessionLocal  # noqa: E402
 from app.kprint.models import KprintExhibitItem as KobaExhibitItem  # noqa: E402

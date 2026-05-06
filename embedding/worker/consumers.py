@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+from time import perf_counter
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,9 +12,12 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from worker.config import settings
 from worker.embedding import build_embeddings_batch
+from worker.intent_signals import looks_like_general_faq
 from worker.llm import classify_intent_heuristic, stream_text_tokens
 from worker.queue import WorkerQueue
+from worker.router_openai import openai_refine_worker_routing_intent
 
+logger = logging.getLogger(__name__)
 
 engine = create_async_engine(settings.postgres_dsn, pool_pre_ping=True, echo=False)
 
@@ -39,7 +44,7 @@ async def _trace(
     await redis.expire(trace_key, 3600)
 
 
-async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, message: str) -> str:
+async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, message: str) -> dict[str, Any]:
     endpoint = f"{settings.api_base_url.rstrip('/')}/tools/embedding/api/search"
     form_data = {
         "session_id": session_id,
@@ -50,9 +55,29 @@ async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, m
         "chunk_type": "all",
         "answer_mode": "openai",
         "openai_model": settings.openai_model,
+        "intent_use_openai": "true" if settings.retrieval_intent_use_openai else "false",
+        "retrieval_min_queries": str(settings.retrieval_min_queries),
+        "retrieval_max_queries": str(settings.retrieval_max_queries),
+        "retrieval_score_cutoff": str(settings.retrieval_score_cutoff),
+        "retrieval_evidence_ratio": str(settings.retrieval_evidence_ratio),
+        "retrieval_rrf_k": str(settings.retrieval_rrf_k),
+        "retrieval_context_limit": str(settings.retrieval_context_limit),
     }
+    if settings.retrieval_top_k_per_query is not None:
+        form_data["retrieval_top_k_per_query"] = str(settings.retrieval_top_k_per_query)
+    logger.info("[worker] retrieval POST %s session_id=%s", endpoint, (session_id or "")[:40])
+    t_call = perf_counter()
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(endpoint, data=form_data)
+    call_ms = int((perf_counter() - t_call) * 1000)
+    await _trace(
+        redis,
+        request_id=request_id,
+        stage="retrieval_api_wait",
+        status="done",
+        detail=f"/tools/embedding/api/search 응답 대기 {call_ms}ms",
+        data={"http_elapsed_ms": call_ms},
+    )
     try:
         payload = response.json() if response.content else {}
     except json.JSONDecodeError:
@@ -61,6 +86,11 @@ async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, m
     if not response.is_success:
         detail = payload.get("detail") if isinstance(payload, dict) else response.text
         raise RuntimeError(f"retrieval failed: {detail}")
+
+    logger.info(
+        "[worker] retrieval OK answer_chars=%d",
+        len(str(payload.get("answer_korean") or "")),
+    )
 
     # API가 생성한 step_logs(검색/ RRF/ OpenAI 등)를 워커 trace로 펼쳐서 저장한다.
     try:
@@ -73,18 +103,21 @@ async def _answer_retrieval(redis: Redis, *, request_id: str, session_id: str, m
                 step = s.get("step")
                 title = str(s.get("title", "") or "-")
                 detail = str(s.get("detail", "") or "")
+                data = s.get("data") if isinstance(s.get("data"), dict) else {}
+                step_ms = data.get("step_elapsed_ms")
+                extra = f" | step_elapsed={step_ms}ms" if isinstance(step_ms, int) else ""
                 await _trace(
                     redis,
                     request_id=request_id,
                     stage=f"retrieval_step_{step}",
                     status="done",
-                    detail=f"{title} · {detail}",
-                    data={"step": step, "title": title, "detail": detail},
+                    detail=f"{title} · {detail}{extra}",
+                    data={"step": step, "title": title, "detail": detail, **data},
                 )
     except Exception:
         # 로깅 실패는 본 흐름을 막지 않는다.
         pass
-    return str(payload.get("answer_korean") or "검색 결과 기반 답변을 생성하지 못했습니다.")
+    return payload
 
 
 def _heuristic_answer(intent: str) -> str:
@@ -95,7 +128,7 @@ def _heuristic_answer(intent: str) -> str:
     if intent == "not_related":
         return "현재는 전시 참가업체/제품 관련 질문만 답변할 수 있어요."
     if intent == "general":
-        return "general"
+        return "전시·참가업체와 무관한 일반 대화로 보입니다. 전시나 업체·제품에 대해 물어봐 주시면 더 잘 도와드릴 수 있어요."
     return "요청을 처리했습니다."
 
 
@@ -115,6 +148,7 @@ async def llm_consumer(redis: Redis) -> None:
         session_intent_key = f"chat:session:{session_id}:last_intent" if session_id else ""
 
         try:
+            logger.info("[worker] job start request_id=%s retry=%s", request_id, retries)
             await _trace(
                 redis,
                 request_id=request_id,
@@ -123,15 +157,71 @@ async def llm_consumer(redis: Redis) -> None:
                 detail=f"워커가 큐 메시지 수신 (retry={retries})",
             )
             prev_intent = await redis.get(session_intent_key) if session_intent_key else None
-            intent = classify_intent_heuristic(job["message"], previous_intent=prev_intent)
+            intent_heuristic = classify_intent_heuristic(job["message"], previous_intent=prev_intent)
+            intent = intent_heuristic
+            routing_detail = ""
+            classifier_stage = "worker_heuristic_only"
+            router_meta: dict[str, Any] = {}
+
+            if (
+                intent_heuristic == "general"
+                and settings.worker_general_fallback_openai
+                and (settings.openai_api_key or "").strip()
+            ):
+                if looks_like_general_faq(job["message"]):
+                    routing_detail = (
+                        "_GENERAL_FAQ_HINTS(메인 동일) 매칭 — 운영 FAQ 로 보고 OpenAI 라우팅 재판 생략."
+                    )
+                else:
+                    refined, router_meta = await openai_refine_worker_routing_intent(
+                        message=job["message"],
+                        previous_intent=prev_intent,
+                        api_key=(settings.openai_api_key or "").strip(),
+                        base_url=(settings.openai_base_url or "").strip() or None,
+                        model=(settings.openai_model or "").strip() or "gpt-4o-mini",
+                    )
+                    if refined is not None:
+                        intent = refined
+                        classifier_stage = "worker_heuristic_plus_openai_router"
+                        routing_detail = (
+                            f"휴리스틱 general → fallback 라우팅으로 OpenAI({settings.openai_model}) 재판 → intent={intent}."
+                        )
+                    else:
+                        routing_detail = (
+                            "휴리스틱 general · FAQ 비매칭이나 OpenAI 재판 파싱/오류로 휴리스틱 라우팅 유지(general)."
+                        )
+            elif intent_heuristic == "general":
+                routing_detail = (
+                    "휴리스틱 general — "
+                    "(fallback OpenAI 라우터는 WORKER_GENERAL_FALLBACK_OPENAI=1 및 OPENAI_API_KEY 필요)."
+                )
+
+            logger.info("[worker] intent=%s heuristic=%s (prev=%s)", intent, intent_heuristic, prev_intent or "-")
             await _trace(
                 redis,
                 request_id=request_id,
                 stage="intent_classification",
                 status="done",
-                detail=f"분류 결과: {intent} (previous_intent={prev_intent or '-'})",
+                detail=(
+                    f"워커: heuristic={intent_heuristic} → routing_intent={intent}, previous_intent={prev_intent or '-'}. "
+                    f"{routing_detail or '검색 경로면 메인 API에서 의도 재보정 가능.'}"
+                ),
+                data={
+                    "classifier_stage": classifier_stage,
+                    "intent_heuristic": intent_heuristic,
+                    "intent_routing": intent,
+                    "previous_intent": prev_intent,
+                    "intent_use_openai_on_api": settings.retrieval_intent_use_openai,
+                    "openai_router_model": settings.openai_model
+                    if classifier_stage == "worker_heuristic_plus_openai_router"
+                    else None,
+                    "faq_hints_matched_general": intent_heuristic == "general"
+                    and looks_like_general_faq(job["message"]),
+                    "openai_router_trace": router_meta or None,
+                },
             )
 
+            suggestion_cards: list[Any] = []
             if intent in {"company", "product", "follow_up"}:
                 await _trace(
                     redis,
@@ -140,7 +230,15 @@ async def llm_consumer(redis: Redis) -> None:
                     status="started",
                     detail="검색 → RRF → OpenAI 단계 시작",
                 )
-                answer = await _answer_retrieval(redis, request_id=request_id, session_id=session_id, message=job["message"])
+                payload = await _answer_retrieval(redis, request_id=request_id, session_id=session_id, message=job["message"])
+                answer = str(payload.get("answer_korean") or "검색 결과 기반 답변을 생성하지 못했습니다.")
+                raw_cards = payload.get("suggestion_cards")
+                suggestion_cards = raw_cards if isinstance(raw_cards, list) else []
+                logger.info(
+                    "[worker] retrieval path done request_id=%s cards=%d",
+                    request_id,
+                    len(suggestion_cards),
+                )
                 await _trace(
                     redis,
                     request_id=request_id,
@@ -150,6 +248,7 @@ async def llm_consumer(redis: Redis) -> None:
                 )
             else:
                 answer = _heuristic_answer(intent)
+                logger.info("[worker] heuristic-only answer request_id=%s", request_id)
                 await _trace(
                     redis,
                     request_id=request_id,
@@ -169,6 +268,12 @@ async def llm_consumer(redis: Redis) -> None:
             async for token in stream_text_tokens(answer):
                 await redis.rpush(stream_key, json.dumps({"event": "token", "data": token}, ensure_ascii=False))
 
+            if suggestion_cards:
+                await redis.rpush(
+                    stream_key,
+                    json.dumps({"event": "cards", "data": suggestion_cards}, ensure_ascii=False),
+                )
+
             await redis.set(cache_key, answer, ex=600)
             if session_intent_key:
                 await redis.set(session_intent_key, intent, ex=3600)
@@ -182,6 +287,7 @@ async def llm_consumer(redis: Redis) -> None:
                 detail="응답 완료 이벤트 전송",
             )
         except Exception as exc:  # noqa: BLE001
+            logger.exception("[worker] job failed request_id=%s: %s", request_id, exc)
             await _trace(
                 redis,
                 request_id=request_id,

@@ -51,6 +51,6 @@ class MessageMeta(Base):
     # 생성 시각
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # 관계: meta → message
-    message: Mapped["Message"] = relationship(back_populates="meta")
+    # AsyncSession 에서 역방향 lazy 로드 금지 (MissingGreenlet 방지).
+    message: Mapped["Message"] = relationship(back_populates="meta", lazy="noload")
 

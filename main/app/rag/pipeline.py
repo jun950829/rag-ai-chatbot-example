@@ -22,6 +22,7 @@ import os
 import sys
 import uuid
 from urllib import request as urllib_request
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from dataclasses import dataclass
 from functools import lru_cache
@@ -36,6 +37,8 @@ RAG_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = RAG_DIR.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.db.sync_url import to_sync_postgres_dsn
 
 DEFAULT_EMBEDDING_MODEL_ID = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_DEVICE = os.environ.get("EMBEDDING_DEVICE", "mps")
@@ -130,20 +133,38 @@ class _EmbeddingLocalSettings(BaseSettings):
 
 
 def _resolve_database_url() -> str:
-    """동기 SQLAlchemy 엔진용 Postgres URL. Docker 안/밖에 따라 host(db vs localhost)를 보정한다."""
-    settings = _EmbeddingLocalSettings()
-    url = settings.embedding_database_url or settings.database_url
+    """동기 SQLAlchemy 엔진용 Postgres URL. async DSN 은 ``to_sync_postgres_dsn`` 으로 맞춘다.
+
+    우선순위: 프로세스 환경 ``DATABASE_URL`` / ``POSTGRES_DSN`` (Docker·워커에서 가장 확실) →
+    ``_EmbeddingLocalSettings`` 파일 → 마지막 ``get_settings()`` (임베딩 호스트에서는 기본 ``@db`` 가
+    잡히지 않도록 env 가 없을 때만).
+    """
     in_container = (PROJECT_ROOT / ".dockerenv").exists() or Path("/.dockerenv").exists()
+
+    url = (os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_DSN") or "").strip() or None
+    if not url:
+        local = _EmbeddingLocalSettings()
+        url = (
+            ((local.embedding_database_url or local.database_url or "").strip()) or None
+        )
+    if not url:
+        try:
+            from app.core.config import get_settings
+
+            url = (get_settings().database_url or "").strip() or None
+        except Exception:
+            url = None
+
     if not url:
         if in_container:
-            return "postgresql+psycopg://postgres:postgres@db:5432/rag_template"
+            return "postgresql+psycopg://postgres:postgres@postgres:5432/chatbot"
         return "postgresql+psycopg://postgres:postgres@localhost:5432/rag_template"
 
     if "@db:" in url and not in_container:
-        return url.replace("@db:", "@localhost:")
-    if "@localhost:" in url and in_container:
-        return url.replace("@localhost:", "@db:")
-    return url
+        url = url.replace("@db:", "@localhost:")
+    elif "@localhost:" in url and in_container:
+        url = url.replace("@localhost:", "@db:")
+    return to_sync_postgres_dsn(url)
 
 
 engine = sa.create_engine(_resolve_database_url(), future=True, pool_pre_ping=True)  # 배치/검색 공용 동기 DB 엔진
@@ -246,14 +267,17 @@ def _is_qwen3_vl_embedding_model(model_id: str) -> bool:
     return "qwen3-vl-embedding" in m
 
 
-@lru_cache(maxsize=4)
-def _get_sentence_transformer(model_id: str, device: str | None):
+@lru_cache(maxsize=16)
+def _get_sentence_transformer(model_id: str, device: str | None, backend: str):
     """SentenceTransformer 모델을 한 번 로드해 캐시한다 (일반 텍스트 임베딩)."""
     from sentence_transformers import SentenceTransformer
 
     kwargs: dict[str, Any] = {"trust_remote_code": True}
     if device:
         kwargs["device"] = device
+    _be = (backend or "").strip().lower()
+    if _be:
+        kwargs["backend"] = _be
     return SentenceTransformer(model_id, **kwargs)
 
 
@@ -403,7 +427,11 @@ def _build_embeddings(
     if _is_qwen3_vl_embedding_model(model_id):
         embedder = _get_qwen3_vl_embedder(model_id, resolved_device)
     else:
-        embedder = _get_sentence_transformer(model_id, resolved_device)
+        embedder = _get_sentence_transformer(
+            model_id,
+            resolved_device,
+            (os.environ.get("SENTENCE_TRANSFORMERS_BACKEND") or "").strip().lower(),
+        )
     p(f"모델 준비 완료 (device={resolved_device})", 28)
 
     for bi, start in enumerate(range(0, total_rows, entity_batch_size), start=1):
@@ -642,13 +670,40 @@ def _embed_texts(
     device: str | None,
     batch_size: int = 32,
 ) -> list[list[float]]:
-    """임의 텍스트 리스트를 로컬 모델로만 임베딩 (쿼리/배치 공용 저수준 API)."""
+    """임의 텍스트 리스트 임베딩 (로컬 모델 우선, 미설치 시 OpenAI 폴백)."""
+    if not texts:
+        return []
     resolved_device = _resolve_device(device)
-    if _is_qwen3_vl_embedding_model(model_id):
-        embedder = _get_qwen3_vl_embedder(model_id, resolved_device)
-    else:
-        embedder = _get_sentence_transformer(model_id, resolved_device)
-    return _encode(embedder, texts, batch_size=batch_size, model_id=model_id)
+    try:
+        if _is_qwen3_vl_embedding_model(model_id):
+            embedder = _get_qwen3_vl_embedder(model_id, resolved_device)
+        else:
+            embedder = _get_sentence_transformer(
+                model_id,
+                resolved_device,
+                (os.environ.get("SENTENCE_TRANSFORMERS_BACKEND") or "").strip().lower(),
+            )
+        return _encode(embedder, texts, batch_size=batch_size, model_id=model_id)
+    except ImportError:
+        # 경량 배포(EC2)에서 sentence-transformers/transformers 미설치 시 OpenAI 임베딩으로 자동 폴백.
+        from openai import OpenAI
+
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            raise
+        base_url = os.environ.get("OPENAI_BASE_URL", "").strip() or None
+        embed_model = os.environ.get("OPENAI_EMBED_MODEL", "text-embedding-3-small").strip()
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        out: list[list[float]] = []
+        eff_batch = max(1, min(int(batch_size or 1), 128))
+        for start in range(0, len(texts), eff_batch):
+            chunk = texts[start : start + eff_batch]
+            resp = client.embeddings.create(model=embed_model, input=chunk)
+            rows = sorted(resp.data, key=lambda d: d.index)
+            out.extend([[float(x) for x in r.embedding] for r in rows])
+        if len(out) != len(texts):
+            raise RuntimeError("openai embedding batch size mismatch")
+        return out
 
 
 def _embed_query_via_http(
@@ -685,6 +740,44 @@ def _embed_query_via_http(
     return [float(x) for x in vec]
 
 
+def _embed_queries_via_http(
+    base_url: str,
+    queries: list[str],
+    *,
+    model_id: str,
+    device: str | None,
+    timeout_sec: int = 120,
+) -> list[list[float]]:
+    """별도 임베딩 서비스 `/v1/embed/queries`로 질의 여러 줄을 한 번에 벡터화 (서버 단일 배치)."""
+    if not queries:
+        return []
+    endpoint = base_url.rstrip("/") + "/v1/embed/queries"
+    body = urlencode(
+        {
+            "queries": json.dumps(queries, ensure_ascii=False),
+            "model_id": model_id,
+            "device": (device or "").strip(),
+        }
+    ).encode("utf-8")
+    req = urllib_request.Request(
+        endpoint,
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    rows = payload.get("embeddings")
+    if not isinstance(rows, list) or len(rows) != len(queries):
+        raise RuntimeError("remote embed/queries returned invalid payload")
+    out: list[list[float]] = []
+    for row in rows:
+        if not isinstance(row, list) or not row:
+            raise RuntimeError("remote embed/queries returned empty row")
+        out.append([float(x) for x in row])
+    return out
+
+
 def embed_query_text(
     query: str,
     *,
@@ -705,6 +798,34 @@ def embed_query_text(
     return vectors[0]
 
 
+def embed_queries_text(
+    queries: list[str],
+    *,
+    model_id: str,
+    device: str | None,
+    remote_base_url: str | None = None,
+) -> list[list[float]]:
+    """RAG 다중 쿼리용: 순서 유지, 원격이면 한 HTTP로 배치, 없으면 로컬 `_embed_texts` 배치."""
+    cleaned = [(q or "").strip() for q in queries]
+    if not cleaned:
+        return []
+    base = (remote_base_url or "").strip() or os.environ.get("EMBEDDING_SERVICE_URL", "").strip()
+    if base:
+        try:
+            return _embed_queries_via_http(base, cleaned, model_id=model_id, device=device)
+        except HTTPError as e:
+            if e.code == 404:
+                return [
+                    _embed_query_via_http(base, q, model_id=model_id, device=device) for q in cleaned
+                ]
+            raise
+    n = len(cleaned)
+    vectors = _embed_texts(cleaned, model_id=model_id, device=device, batch_size=min(32, max(1, n)))
+    if len(vectors) != n:
+        raise RuntimeError("failed to embed queries batch")
+    return vectors
+
+
 def search_embedding_tables(
     *,
     query_embedding: list[float],
@@ -713,6 +834,7 @@ def search_embedding_tables(
     lang: str,
     chunk_type: str,
     entity_scope: str = "all",
+    per_table_limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """질의 벡터와 코사인 거리(`<=>`)로 여러 임베딩 테이블을 UNION 검색해 상위 `top_k` 행을 반환."""
     top_k = max(1, int(top_k))
@@ -795,7 +917,11 @@ def search_embedding_tables(
     LIMIT :top_k
     """
 
-    per_table_limit = max(top_k, 50)
+    if per_table_limit is None:
+        # UNION 브랜치마다 상한이 너무 크면(예: 50 고정) pgvector 정렬 비용이 커진다.
+        per_table_limit = min(max(top_k * 5, 14), 36)
+    else:
+        per_table_limit = max(1, int(per_table_limit))
     params = {
         "embedding": _vector_literal(query_embedding),
         "per_table_limit": per_table_limit,
@@ -806,36 +932,112 @@ def search_embedding_tables(
     return [dict(r) for r in rows]
 
 
-def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str:
-    """검색 결과를 한국어 안내 문구+프로필 발췌 형태로 묶어 채팅/로그용 문자열을 만든다."""
-    q = (query or "").strip()
-    if not results:
-        return f"'{q}'와(과) 관련된 업체를 찾지 못했습니다. 검색어를 더 구체적으로 입력해 주세요."
-
-    # Prefer profile chunks so the answer area shows company profile-like data directly.
-    profiles = [r for r in results if (r.get("chunk_typ") == "profile")]
-    candidates = profiles if profiles else results
-
-    lines: list[str] = [f"[검색어] {q}", "[프로필 데이터]"]
-    seen_external_ids: set[str] = set()
-    for r in candidates:
-        ext = (r.get("external_id") or "").strip() or "외부 ID 없음"
-        if ext in seen_external_ids:
+def split_search_results_profile_evidence(
+    results: list[dict[str, Any]],
+    *,
+    max_profiles: int = 4,
+    max_evidence: int = 8,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """RRF 순서를 유지한 채 profile은 external_id 기준 중복 제거, 나머지는 evidence 취급."""
+    profiles: list[dict[str, Any]] = []
+    seen_ext: set[str] = set()
+    for r in results:
+        if r.get("chunk_typ") != "profile":
             continue
-        seen_external_ids.add(ext)
-        content = (r.get("content") or "").strip()
-        if not content:
+        ext = str(r.get("external_id") or "").strip()
+        if ext and ext in seen_ext:
             continue
-        score = r.get("score")
-        score_text = f"{float(score):.3f}" if isinstance(score, (int, float)) else "-"
-        lines.append(f"- external_id: {ext} (score={score_text}, lang={r.get('lang')})")
-        lines.append(content)
-        if len(seen_external_ids) >= 3:
+        if ext:
+            seen_ext.add(ext)
+        profiles.append(r)
+        if len(profiles) >= max_profiles:
             break
 
-    if len(lines) <= 2:
-        return f"[검색어] {q}\n[프로필 데이터]\n- 표시할 profile 데이터가 없습니다."
-    return "\n".join(lines)
+    evidence: list[dict[str, Any]] = []
+    for r in results:
+        if r.get("chunk_typ") == "profile":
+            continue
+        evidence.append(r)
+        if len(evidence) >= max_evidence:
+            break
+    return profiles, evidence
+
+
+def format_search_results_for_llm_context(results: list[dict[str, Any]]) -> str:
+    """OpenAI 등 답변 생성용: 프로필은 항목별 블록, evidence는 한 줄 요약 (의도/점수 메타 없음)."""
+    profiles, evidence = split_search_results_profile_evidence(results)
+    blocks: list[str] = []
+
+    if profiles:
+        blocks.append("【프로필】 (전시 참가사·전시품 요약)")
+        for i, r in enumerate(profiles, start=1):
+            ext = (r.get("external_id") or "").strip() or "(식별자 없음)"
+            sf = (r.get("source_field") or "").strip()
+            body = (r.get("content") or "").strip()
+            if len(body) > 1200:
+                body = body[:1200].rstrip() + "…"
+            head = f"— 항목 {i} · {ext}"
+            if sf:
+                head += f" · 출처 필드: {sf}"
+            blocks.append(head + "\n" + body)
+
+    if evidence:
+        blocks.append("\n【추가 근거】 (상세·증빙 텍스트 요약, 한 줄씩)")
+        for i, r in enumerate(evidence, start=1):
+            ext = (r.get("external_id") or "").strip() or "-"
+            sf = (r.get("source_field") or "").strip() or "-"
+            typ = (r.get("chunk_typ") or "").strip() or "-"
+            c = (r.get("content") or "").strip().replace("\n", " ")
+            if len(c) > 300:
+                c = c[:300].rstrip() + "…"
+            blocks.append(f"· [{i}] 유형={typ}, 식별자={ext}, 필드={sf}\n  {c}")
+
+    out = "\n".join(blocks).strip()
+    return out or "(검색 결과 본문이 비어 있습니다.)"
+
+
+def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str:
+    """검색 결과를 채팅에 바로 넣기 좋은 한국어 안내 문구로 만든다 (템플릿/폴백용)."""
+    q = (query or "").strip()
+    if not results:
+        return f"「{q}」에 맞는 정보를 찾지 못했습니다. 다른 표현으로 검색해 보시겠어요?"
+
+    profiles, evidence = split_search_results_profile_evidence(results)
+    lines: list[str] = [
+        f"질문하신「{q}」과 가장 잘 맞는 저장 데이터를 아래처럼 정리했습니다.",
+        "",
+    ]
+
+    if profiles:
+        lines.append("■ 관련 프로필")
+        for r in profiles:
+            ext = (r.get("external_id") or "").strip() or "식별자 없음"
+            body = (r.get("content") or "").strip()
+            if not body:
+                continue
+            lines.append(f"  · {ext}")
+            for part in body.split("\n"):
+                part = part.strip()
+                if part:
+                    lines.append(f"    {part}")
+        lines.append("")
+
+    if evidence:
+        lines.append("■ 추가로 참고한 내용 (요약)")
+        for r in evidence[:6]:
+            ext = (r.get("external_id") or "").strip() or "-"
+            sf = (r.get("source_field") or "").strip()
+            c = (r.get("content") or "").strip().replace("\n", " ")
+            if len(c) > 200:
+                c = c[:200].rstrip() + "…"
+            tail = f" ({sf})" if sf else ""
+            lines.append(f"  · {ext}{tail}: {c}")
+        lines.append("")
+
+    lines.append("위 내용만 근거로 답변했습니다. 더 구체적인 업체명·제품명이 있으면 알려 주세요.")
+    if not profiles and not evidence:
+        return f"「{q}」에 대해 표시할 검색 본문이 없습니다."
+    return "\n".join(lines).rstrip()
 
 
 # 구버전 import/호출자 호환용 별칭 (동일 함수를 가리킴).

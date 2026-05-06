@@ -48,6 +48,9 @@ def classify_intent_heuristic(message: str, *, previous_intent: str | None = Non
 
 
 async def stream_text_tokens(text: str):
-    for token in (text or "").split():
-        await asyncio.sleep(0.03)
-        yield token
+    """줄바꿈을 유지하면서 짧은 덩어리로 스트리밍 (채팅 UI가 자연스럽게 흐르도록 작은 step)."""
+    t = text or ""
+    step = 12
+    for i in range(0, len(t), step):
+        yield t[i : i + step]
+        await asyncio.sleep(0.014)

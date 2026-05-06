@@ -27,6 +27,12 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MAIN_ROOT = os.path.join(PROJECT_ROOT, "main")
 sys.path.insert(0, MAIN_ROOT)
 sys.path.insert(1, PROJECT_ROOT)
+_scripts_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _scripts_dir)
+
+import ingest_db_env  # noqa: E402
+
+ingest_db_env.ensure_sync_database_url(main_root=MAIN_ROOT)
 
 from sqlalchemy import delete, func, select  # noqa: E402
 from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: E402
