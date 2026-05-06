@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from worker.config import settings
 from worker.embedding import build_embeddings_batch
+from worker.intent_signals import looks_like_general_faq
 from worker.llm import classify_intent_heuristic, stream_text_tokens
 from worker.queue import WorkerQueue
+from worker.router_openai import openai_refine_worker_routing_intent
 
 logger = logging.getLogger(__name__)
 
@@ -155,14 +157,68 @@ async def llm_consumer(redis: Redis) -> None:
                 detail=f"워커가 큐 메시지 수신 (retry={retries})",
             )
             prev_intent = await redis.get(session_intent_key) if session_intent_key else None
-            intent = classify_intent_heuristic(job["message"], previous_intent=prev_intent)
-            logger.info("[worker] heuristic intent=%s (prev=%s)", intent, prev_intent or "-")
+            intent_heuristic = classify_intent_heuristic(job["message"], previous_intent=prev_intent)
+            intent = intent_heuristic
+            routing_detail = ""
+            classifier_stage = "worker_heuristic_only"
+            router_meta: dict[str, Any] = {}
+
+            if (
+                intent_heuristic == "general"
+                and settings.worker_general_fallback_openai
+                and (settings.openai_api_key or "").strip()
+            ):
+                if looks_like_general_faq(job["message"]):
+                    routing_detail = (
+                        "_GENERAL_FAQ_HINTS(메인 동일) 매칭 — 운영 FAQ 로 보고 OpenAI 라우팅 재판 생략."
+                    )
+                else:
+                    refined, router_meta = await openai_refine_worker_routing_intent(
+                        message=job["message"],
+                        previous_intent=prev_intent,
+                        api_key=(settings.openai_api_key or "").strip(),
+                        base_url=(settings.openai_base_url or "").strip() or None,
+                        model=(settings.openai_model or "").strip() or "gpt-4o-mini",
+                    )
+                    if refined is not None:
+                        intent = refined
+                        classifier_stage = "worker_heuristic_plus_openai_router"
+                        routing_detail = (
+                            f"휴리스틱 general → fallback 라우팅으로 OpenAI({settings.openai_model}) 재판 → intent={intent}."
+                        )
+                    else:
+                        routing_detail = (
+                            "휴리스틱 general · FAQ 비매칭이나 OpenAI 재판 파싱/오류로 휴리스틱 라우팅 유지(general)."
+                        )
+            elif intent_heuristic == "general":
+                routing_detail = (
+                    "휴리스틱 general — "
+                    "(fallback OpenAI 라우터는 WORKER_GENERAL_FALLBACK_OPENAI=1 및 OPENAI_API_KEY 필요)."
+                )
+
+            logger.info("[worker] intent=%s heuristic=%s (prev=%s)", intent, intent_heuristic, prev_intent or "-")
             await _trace(
                 redis,
                 request_id=request_id,
                 stage="intent_classification",
                 status="done",
-                detail=f"분류 결과: {intent} (previous_intent={prev_intent or '-'})",
+                detail=(
+                    f"워커: heuristic={intent_heuristic} → routing_intent={intent}, previous_intent={prev_intent or '-'}. "
+                    f"{routing_detail or '검색 경로면 메인 API에서 의도 재보정 가능.'}"
+                ),
+                data={
+                    "classifier_stage": classifier_stage,
+                    "intent_heuristic": intent_heuristic,
+                    "intent_routing": intent,
+                    "previous_intent": prev_intent,
+                    "intent_use_openai_on_api": settings.retrieval_intent_use_openai,
+                    "openai_router_model": settings.openai_model
+                    if classifier_stage == "worker_heuristic_plus_openai_router"
+                    else None,
+                    "faq_hints_matched_general": intent_heuristic == "general"
+                    and looks_like_general_faq(job["message"]),
+                    "openai_router_trace": router_meta or None,
+                },
             )
 
             suggestion_cards: list[Any] = []

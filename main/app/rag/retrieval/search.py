@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from app.rag.pipeline import embed_queries_text, embed_query_text, search_embedding_tables
 
 logger = logging.getLogger(__name__)
-
-# 쿼리별 임베딩·DB 검색은 독립이라 스레드 병렬화로 wall time을 줄인다.
-_SEMANTIC_SEARCH_MAX_WORKERS = 8
 
 
 def _normalize_row(row: dict[str, Any], rank: int) -> dict[str, Any]:
@@ -94,31 +90,26 @@ def semantic_search_multi_query(
         device=device,
         remote_base_url=embedding_remote_base_url,
     )
-    workers = min(_SEMANTIC_SEARCH_MAX_WORKERS, len(idx_nonempty))
+    logger.info("[retrieval][step4] batch_embed + sequential DB queries=%d", len(idx_nonempty))
 
-    def _run(j: int) -> dict[str, Any]:
+    non_empty_buckets: list[dict[str, Any]] = []
+    for j in range(len(idx_nonempty)):
         i = idx_nonempty[j]
         q = normalized[i]
-        return _single_query_search(
-            q,
-            model_id=model_id,
-            device=device,
-            profile_k=profile_k,
-            evidence_k=evidence_k,
-            top_k_per_query=top_k_per_query,
-            lang=lang,
-            embedding_remote_base_url=None,
-            entity_scope=entity_scope,
-            qvec=vec_list[j],
+        non_empty_buckets.append(
+            _single_query_search(
+                q,
+                model_id=model_id,
+                device=device,
+                profile_k=profile_k,
+                evidence_k=evidence_k,
+                top_k_per_query=top_k_per_query,
+                lang=lang,
+                embedding_remote_base_url=None,
+                entity_scope=entity_scope,
+                qvec=vec_list[j],
+            )
         )
-
-    logger.info(
-        "[retrieval][step4] batch_embed + parallel DB queries=%d workers=%d",
-        len(idx_nonempty),
-        workers,
-    )
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        non_empty_buckets = list(pool.map(_run, range(len(idx_nonempty))))
 
     it = iter(non_empty_buckets)
     out: list[dict[str, Any]] = []

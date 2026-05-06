@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /srv/embedding
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-core.txt requirements-embed.txt install_deps.sh ./
+RUN bash install_deps.sh cpu
 
 COPY worker ./worker
 

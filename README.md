@@ -177,6 +177,7 @@ Local embedding worker (GPU; separate from Docker API):
 ```bash
 export PYTHONPATH="$(pwd)"
 pip install -r requirements-api.txt -r embedding/requirements.txt
+bash embedding/install_deps.sh cpu
 uvicorn embedding.main:app --reload --host 0.0.0.0 --port 8765
 ```
 

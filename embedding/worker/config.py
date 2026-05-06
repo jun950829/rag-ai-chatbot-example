@@ -1,11 +1,22 @@
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# pydantic 의 env_file=".env" 는 **프로세스 cwd** 기준이라,
+# 레포 루트 등에서 `python -m worker.main` 하면 embedding/.env 가 안 읽히고
+# REDIS_URL 기본값(127.0.0.1)으로 붙어 **메인과 다른 Redis 의 빈 queue:llm** 만 BLPOP 하게 된다.
+_EMBEDDING_ROOT = Path(__file__).resolve().parent.parent
 
 
 class WorkerSettings(BaseSettings):
     """워커는 메인(API) Redis 큐를 소비한다. EC2 분리 배포 시 localhost / docker 서비스명이면 큐 미처리."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(str(_EMBEDDING_ROOT / ".env"),),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     redis_url: str = Field(
         default="redis://127.0.0.1:6379/0",
@@ -32,13 +43,22 @@ class WorkerSettings(BaseSettings):
     retrieval_model_id: str = "Qwen/Qwen3-Embedding-0.6B"
     retrieval_device: str = "cpu"
     retrieval_top_k: int = 6
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = Field(
+        default="gpt-4o-mini",
+        description="메인 검색 폼·워커 fallback 라우팅 OpenAI 라우터 공통 모델",
+    )
 
-    # 챗봇 → API 검색 시 Form으로 전달 (미설정 시 API 쪽 환경 기본)
-    # retrieval_intent_use_openai: bool = True
-    retrieval_intent_use_openai: bool = False
-    retrieval_min_queries: int = 2
-    retrieval_max_queries: int = 2
+    openai_api_key: str = ""
+    openai_base_url: str = ""
+    worker_general_fallback_openai: bool = Field(
+        default=True,
+        description="휴리스틱이 general 일 때 FAQ 힌트가 없으면 OpenAI로 company/product 등 라우팅 재판",
+    )
+
+    # 챗봇 → API 검색 시 Form으로 전달 — False면 검색축 모호 시 OpenAI 재분류(7단계)가 아예 타지 않음
+    retrieval_intent_use_openai: bool = True
+    retrieval_min_queries: int = 4
+    retrieval_max_queries: int = 4
     retrieval_score_cutoff: float = 0.25
     retrieval_evidence_ratio: float = 0.45
     retrieval_rrf_k: int = 60

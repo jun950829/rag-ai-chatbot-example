@@ -133,13 +133,31 @@ class _EmbeddingLocalSettings(BaseSettings):
 
 
 def _resolve_database_url() -> str:
-    """동기 SQLAlchemy 엔진용 Postgres URL. Docker 안/밖에 따라 host(db vs localhost)를 보정한다."""
-    settings = _EmbeddingLocalSettings()
-    url = settings.embedding_database_url or settings.database_url
+    """동기 SQLAlchemy 엔진용 Postgres URL. async DSN 은 ``to_sync_postgres_dsn`` 으로 맞춘다.
+
+    우선순위: 프로세스 환경 ``DATABASE_URL`` / ``POSTGRES_DSN`` (Docker·워커에서 가장 확실) →
+    ``_EmbeddingLocalSettings`` 파일 → 마지막 ``get_settings()`` (임베딩 호스트에서는 기본 ``@db`` 가
+    잡히지 않도록 env 가 없을 때만).
+    """
     in_container = (PROJECT_ROOT / ".dockerenv").exists() or Path("/.dockerenv").exists()
+
+    url = (os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_DSN") or "").strip() or None
+    if not url:
+        local = _EmbeddingLocalSettings()
+        url = (
+            ((local.embedding_database_url or local.database_url or "").strip()) or None
+        )
+    if not url:
+        try:
+            from app.core.config import get_settings
+
+            url = (get_settings().database_url or "").strip() or None
+        except Exception:
+            url = None
+
     if not url:
         if in_container:
-            return "postgresql+psycopg://postgres:postgres@db:5432/rag_template"
+            return "postgresql+psycopg://postgres:postgres@postgres:5432/chatbot"
         return "postgresql+psycopg://postgres:postgres@localhost:5432/rag_template"
 
     if "@db:" in url and not in_container:
@@ -249,14 +267,17 @@ def _is_qwen3_vl_embedding_model(model_id: str) -> bool:
     return "qwen3-vl-embedding" in m
 
 
-@lru_cache(maxsize=4)
-def _get_sentence_transformer(model_id: str, device: str | None):
+@lru_cache(maxsize=16)
+def _get_sentence_transformer(model_id: str, device: str | None, backend: str):
     """SentenceTransformer 모델을 한 번 로드해 캐시한다 (일반 텍스트 임베딩)."""
     from sentence_transformers import SentenceTransformer
 
     kwargs: dict[str, Any] = {"trust_remote_code": True}
     if device:
         kwargs["device"] = device
+    _be = (backend or "").strip().lower()
+    if _be:
+        kwargs["backend"] = _be
     return SentenceTransformer(model_id, **kwargs)
 
 
@@ -406,7 +427,11 @@ def _build_embeddings(
     if _is_qwen3_vl_embedding_model(model_id):
         embedder = _get_qwen3_vl_embedder(model_id, resolved_device)
     else:
-        embedder = _get_sentence_transformer(model_id, resolved_device)
+        embedder = _get_sentence_transformer(
+            model_id,
+            resolved_device,
+            (os.environ.get("SENTENCE_TRANSFORMERS_BACKEND") or "").strip().lower(),
+        )
     p(f"모델 준비 완료 (device={resolved_device})", 28)
 
     for bi, start in enumerate(range(0, total_rows, entity_batch_size), start=1):
@@ -653,7 +678,11 @@ def _embed_texts(
         if _is_qwen3_vl_embedding_model(model_id):
             embedder = _get_qwen3_vl_embedder(model_id, resolved_device)
         else:
-            embedder = _get_sentence_transformer(model_id, resolved_device)
+            embedder = _get_sentence_transformer(
+                model_id,
+                resolved_device,
+                (os.environ.get("SENTENCE_TRANSFORMERS_BACKEND") or "").strip().lower(),
+            )
         return _encode(embedder, texts, batch_size=batch_size, model_id=model_id)
     except ImportError:
         # 경량 배포(EC2)에서 sentence-transformers/transformers 미설치 시 OpenAI 임베딩으로 자동 폴백.

@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.db.sync_url import to_async_postgres_url
 
 
 def _create_async_engine() -> AsyncEngine:
@@ -23,7 +24,7 @@ def _create_async_engine() -> AsyncEngine:
 
     settings = get_settings()
     return create_async_engine(
-        settings.database_url,
+        to_async_postgres_url(settings.database_url),
         pool_pre_ping=True,
         echo=False,
     )

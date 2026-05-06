@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from functools import partial
 from time import perf_counter
 from typing import Any
 
@@ -90,31 +92,75 @@ async def execute_retrieval_pipeline(
         else "all"
     )
     is_dialog_followup = bool(intent_meta.get("is_dialog_followup", False))
+    classification_source = str(intent_meta.get("source", "unknown"))
+    used_openai = _intent_meta_used_openai(intent_meta)
+    # 휴리스틱 단계에서 바로 확정됐는지 vs OpenAI 7단계까지 갔는지 (trace/UI에서 구분)
+    intent_decider: str = "openai" if used_openai else "heuristic"
+
+    llm_path_note = ""
+    if not intent_use_openai:
+        llm_path_note = (
+            " LLM의도분류: 요청 설정(intent_use_openai=false)으로 Chat Completions 호출 없음 — 휴리스틱·규칙만 사용."
+        )
+    elif intent_client is None:
+        llm_path_note = (
+            " LLM의도분류: 설정은 켜져 있으나 OpenAI 클라이언트 없음(예: OPENAI_API_KEY 미설정) — 휴리스틱만 사용."
+        )
+    elif used_openai:
+        if classification_source.startswith("openai_rescue"):
+            llm_path_note = (
+                f" LLM의도분류(구제): 휴리스틱이 general/not_related/FAQ 로 보낼 뻔했으나 "
+                f"OpenAI가 검색 의도로 보정함 ({classification_source}, model={intent_model})."
+            )
+        else:
+            llm_path_note = (
+                f" LLM의도분류: OpenAI로 intent/topic 한 줄 파싱 적용됨 (model={intent_model})."
+            )
+    else:
+        llm_path_note = (
+            " LLM의도분류: 클라이언트는 있으나 휴리스틱 단계에서 의도가 확정되어 "
+            "(또는 OpenAI 재시도 필요 없음으로) 검색 분류용 Chat 호출 없음."
+        )
+
+    classification_kind = "heuristic"
+    if used_openai:
+        classification_kind = (
+            "openai_rescue" if classification_source.startswith("openai_rescue") else "openai_fallback"
+        )
+
+    decider_ko = "OpenAI(Chat API)" if used_openai else "휴리스틱(규칙·키워드)"
+    detail_step1 = (
+        f"intent={intent}, 검색축={retrieval_topic or '-'}, 후행={is_dialog_followup}. "
+        f"최종판정={decider_ko}, 내부 source={classification_source}.{llm_path_note}"
+    )
+
     logger.info(
-        "[retrieval][step1] intent=%s retrieval_topic=%s is_dialog_followup=%s",
+        "[retrieval][step1] intent=%s retrieval_topic=%s followup=%s decider=%s source=%s intent_use_openai=%s client=%s",
         intent,
         retrieval_topic,
         is_dialog_followup,
+        intent_decider,
+        classification_source,
+        intent_use_openai,
+        "yes" if intent_client is not None else "no",
     )
-    classification_source = str(intent_meta.get("source", "unknown"))
-    used_openai = _intent_meta_used_openai(intent_meta)
-    classification_path_text = "OpenAI 기반 분류" if used_openai else "휴리스틱 분류"
     _append_step(
         step=1,
         title="의도 분류",
-        detail=(
-            f"query 의도를 '{intent}'로 분류, 검색축={retrieval_topic or '-'}, "
-            f"대화후행={is_dialog_followup} (분류 경로: {classification_path_text}, source={classification_source})"
-        ),
+        detail=detail_step1,
         data={
             "intent": intent,
             "retrieval_topic": retrieval_topic,
             "is_dialog_followup": is_dialog_followup,
             "query": normalized_query,
             "classification_meta": intent_meta,
+            "intent_decider": intent_decider,
+            "classification_source": classification_source,
+            "classification_kind": classification_kind,
             "openai_used_for_intent": used_openai,
             "intent_model": intent_model if intent_client is not None else None,
             "intent_use_openai_param": intent_use_openai,
+            "openai_client_available": intent_client is not None,
         },
     )
 
@@ -210,15 +256,19 @@ async def execute_retrieval_pipeline(
     search_lang = "kor" if language == "ko" else "eng"
     # --- 단계 4: entity_scope는 라우팅 intent가 아니라 retrieval_topic 기준으로 결정한다 ---
     entity_scope = entity_scope_from_retrieval_topic(retrieval_topic)
-    searches = semantic_search_multi_query(
-        queries=planned_queries,
-        model_id=cfg.model_id,
-        device=cfg.device,
-        top_k_per_query=cfg.top_k_per_query,
-        lang=search_lang,
-        evidence_ratio=cfg.evidence_ratio,
-        embedding_remote_base_url=embedding_remote_base_url,
-        entity_scope=entity_scope,
+    # asyncio 루프 스레드에서 동기 psycopg2/pipeline 검색을 직접 호출하면 MissingGreenlet 이 날 수 있어 워커 스레드로 격리
+    searches = await asyncio.to_thread(
+        partial(
+            semantic_search_multi_query,
+            queries=planned_queries,
+            model_id=cfg.model_id,
+            device=cfg.device,
+            top_k_per_query=cfg.top_k_per_query,
+            lang=search_lang,
+            evidence_ratio=cfg.evidence_ratio,
+            embedding_remote_base_url=embedding_remote_base_url,
+            entity_scope=entity_scope,
+        )
     )
     query_summaries: list[dict[str, Any]] = []
     for bucket in searches:

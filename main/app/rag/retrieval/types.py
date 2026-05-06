@@ -13,7 +13,7 @@ class RetrievalConfig:
     final_top_k: int = 10
     score_cutoff: float = 0.22
     evidence_ratio: float = 0.6
-    min_queries: int = 3
-    max_queries: int = 5
+    min_queries: int = 4
+    max_queries: int = 4
     rrf_k: int = 60
     context_limit: int = 6
