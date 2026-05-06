@@ -1,0 +1,1112 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KIMES 챗봇</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #0c0f14;
+        --bg-elevated: #141922;
+        --bg-card: #1a212c;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #e8ecf4;
+        --text-muted: #8b95a8;
+        --accent: #31b6a2;
+        --accent-dim: rgba(49, 182, 162, 0.14);
+        --user-bg: linear-gradient(135deg, #31b6a2 0%, #3fd8c2 100%);
+        --user-fg: #0a0f14;
+        --bot-bg: var(--bg-card);
+        --radius-lg: 18px;
+        --radius-md: 14px;
+        --shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+        --max-chat: 720px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        font-family: "Noto Sans KR", "DM Sans", system-ui, -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* subtle grid + vignette */
+      .page-bg {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        background:
+          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(49, 182, 162, 0.24), transparent),
+          radial-gradient(ellipse 60% 40% at 100% 0%, rgba(49, 182, 162, 0.10), transparent),
+          linear-gradient(180deg, #0c0f14 0%, #0a0c10 100%);
+      }
+      .page-bg::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.35;
+        background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 48px 48px;
+      }
+
+      .shell {
+        position: relative;
+        z-index: 1;
+        max-width: var(--max-chat);
+        margin: 0 auto;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        padding: 0 14px 14px;
+      }
+
+      .top-bar {
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--border);
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: 0;
+        z-index: 60;
+        background: rgba(12, 15, 20, 0.86);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      .top-bar-inner {
+        max-width: var(--max-chat);
+        margin: 0 auto;
+        padding: 16px 14px 12px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #31b6a2, #3fd8c2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 13px;
+        letter-spacing: -0.02em;
+        color: #0a1210;
+        box-shadow: 0 6px 24px rgba(49, 182, 162, 0.35);
+      }
+
+      .brand-text h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .brand-text p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--text-muted);
+        font-weight: 500;
+      }
+
+      .faq-panel {
+        flex-shrink: 0;
+        margin-top: 14px;
+        padding: 14px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
+      }
+
+      .faq-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      button.tab-pill {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 8px 14px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      button.tab-pill:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(49, 182, 162, 0.42);
+      }
+      button.tab-pill[data-active="true"] {
+        background: var(--accent-dim);
+        border-color: rgba(49, 182, 162, 0.55);
+        color: var(--accent);
+      }
+
+      #cat-chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      button.cat-chip {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 7px 12px;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: transform 0.12s, border-color 0.15s, background 0.15s;
+      }
+      button.cat-chip:hover {
+        transform: translateY(-1px);
+        border-color: rgba(49, 182, 162, 0.48);
+        background: rgba(49, 182, 162, 0.10);
+      }
+
+      #cat-status {
+        margin-top: 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+        font-weight: 500;
+      }
+
+      .chat-scroll {
+        /* header / composer 가 fixed 이라 실제 '보이는' 영역을 명시적으로 잘라준다 */
+        position: fixed;
+        left: 0;
+        right: 0;
+        max-width: var(--max-chat);
+        margin: 0 auto;
+        top: calc(var(--header-h, 0px) + 12px);
+        bottom: calc(var(--composer-h, 0px) + 12px);
+        overflow-y: auto;
+        padding: 8px 4px 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        scroll-behavior: smooth;
+      }
+
+      .msg {
+        max-width: min(92%, 560px);
+        border-radius: var(--radius-md);
+        padding: 11px 14px;
+        line-height: 1.55;
+        font-size: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        animation: bubble-in 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      @keyframes bubble-in {
+        from {
+          opacity: 0;
+          transform: translateY(10px) scale(0.97);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      .msg-text {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .msg.user {
+        align-self: flex-end;
+        background: var(--user-bg);
+        color: var(--user-fg);
+        border-radius: var(--radius-md) 6px var(--radius-md) var(--radius-md);
+        box-shadow: 0 10px 28px rgba(49, 182, 162, 0.22);
+        font-weight: 500;
+      }
+
+      .msg.bot {
+        align-self: flex-start;
+        background: var(--bot-bg);
+        border: 1px solid var(--border);
+        border-radius: 6px var(--radius-md) var(--radius-md) var(--radius-md);
+        color: var(--text);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+      }
+
+      /* carousel */
+      .suggestion-carousel {
+        width: 100%;
+        overflow-x: auto;
+        padding: 4px 0 10px;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+      }
+      .suggestion-track {
+        display: flex;
+        gap: 12px;
+        flex-wrap: nowrap;
+        padding: 2px 2px 6px;
+      }
+
+      .suggestion-card {
+        flex: 0 0 min(268px, calc(100vw - 48px));
+        scroll-snap-align: start;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 11px;
+        background: linear-gradient(165deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        cursor: default;
+        transition: border-color 0.15s;
+      }
+      .suggestion-card:hover {
+        border-color: rgba(49, 182, 162, 0.42);
+      }
+
+      .suggestion-thumb {
+        height: 100px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .suggestion-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .suggestion-thumb-ph {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+
+      .suggestion-title {
+        font-weight: 700;
+        font-size: 13px;
+        line-height: 1.35;
+        color: var(--text);
+      }
+      .suggestion-sub {
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.45;
+        max-height: 4.2em;
+        overflow: hidden;
+      }
+
+      button.suggestion-detail-btn {
+        margin-top: auto;
+        border: 1px solid rgba(49, 182, 162, 0.55);
+        border-radius: 10px;
+        padding: 8px 12px;
+        background: var(--accent-dim) !important;
+        color: var(--accent) !important;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s, transform 0.12s;
+      }
+      button.suggestion-detail-btn:hover {
+        background: rgba(49, 182, 162, 0.22) !important;
+        transform: translateY(-1px);
+      }
+
+      .faq-follow-wrap {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      button.faq-follow-btn {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 12px;
+        background: rgba(255, 255, 255, 0.05) !important;
+        color: var(--text) !important;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+      }
+      button.faq-follow-btn:hover {
+        border-color: rgba(49, 182, 162, 0.48);
+        background: rgba(49, 182, 162, 0.12) !important;
+      }
+
+      .composer-wrap {
+        flex-shrink: 0;
+        padding-top: 4px;
+        border-top: 1px solid var(--border);
+        background: linear-gradient(180deg, transparent, rgba(12, 15, 20, 0.92) 16%, var(--bg) 100%);
+        margin: 0 -14px -14px;
+        padding: 12px 14px calc(14px + env(safe-area-inset-bottom));
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+      }
+
+      .composer {
+        max-width: var(--max-chat);
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: end;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 48px;
+        max-height: 160px;
+        resize: vertical;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px 14px;
+        font: inherit;
+        font-size: 14px;
+        background: var(--bg-elevated);
+        color: var(--text);
+      }
+      textarea::placeholder {
+        color: var(--text-muted);
+      }
+      textarea:focus {
+        outline: none;
+        border-color: rgba(49, 182, 162, 0.56);
+        box-shadow: 0 0 0 3px rgba(49, 182, 162, 0.16);
+      }
+
+      #send-btn {
+        border: 0;
+        background: linear-gradient(135deg, #31b6a2, #3fd8c2);
+        color: #0a1210;
+        border-radius: 14px;
+        padding: 0 20px;
+        min-height: 48px;
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(49, 182, 162, 0.28);
+        transition: transform 0.12s, opacity 0.15s;
+      }
+      #send-btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+      #send-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .status {
+        font-size: 11px;
+        color: var(--text-muted);
+        padding: 6px 4px 8px;
+        font-weight: 500;
+      }
+      .status.error {
+        color: #f87171;
+      }
+
+      .typing-dots {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+      }
+      .typing-dots span {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: bounce 1.2s ease-in-out infinite;
+      }
+      .typing-dots span:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+      .typing-dots span:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      @keyframes bounce {
+        0%,
+        80%,
+        100% {
+          opacity: 0.35;
+          transform: translateY(0);
+        }
+        40% {
+          opacity: 1;
+          transform: translateY(-4px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-bg" aria-hidden="true"></div>
+    <div class="shell">
+      <header id="kimes-header" class="top-bar">
+        <div class="top-bar-inner">
+          <div class="brand">
+            <div class="brand-mark" aria-hidden="true">K</div>
+            <div class="brand-text">
+              <h1>KIMES 챗봇</h1>
+              <p>전시 정보 · 참가기업 · 제품 문의를 도와드립니다</p>
+            </div>
+          </div>
+
+          <div class="faq-panel">
+            <div class="faq-tabs">
+              <button type="button" class="tab-pill" data-user="visitor" data-active="true">참관객 FAQ</button>
+              <button type="button" class="tab-pill" data-user="exhibitor">참가업체 FAQ</button>
+            </div>
+            <div id="cat-chips"></div>
+            <div id="cat-status" class="cat-status">카테고리 로딩 중...</div>
+          </div>
+        </div>
+      </header>
+
+      <div id="chat-log" class="chat-scroll" role="log" aria-live="polite"></div>
+      <div id="status" class="status" style="display:none">준비됨</div>
+
+      <div id="kimes-composer" class="composer-wrap">
+        <form id="chat-form" class="composer">
+          <textarea id="message" placeholder="궁금한 점을 입력해 주세요" rows="1"></textarea>
+          <button id="send-btn" type="submit">전송</button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        /** 서버에는 그대로 보내고, 채팅에 보여줄 질문문에서만 제거 */
+        function stripExternalIdForDisplay(text) {
+          return String(text || "")
+            .replace(/\s*\(external_id\s*:[^)]*\)/gi, "")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+        }
+
+        const form = document.getElementById("chat-form");
+        const input = document.getElementById("message");
+        const log = document.getElementById("chat-log");
+        const statusEl = document.getElementById("status");
+        const sendBtn = document.getElementById("send-btn");
+        const headerEl = document.getElementById("kimes-header");
+        const composerEl = document.getElementById("kimes-composer");
+        const catChipsEl = document.getElementById("cat-chips");
+        const catStatusEl = document.getElementById("cat-status");
+        const catBtns = Array.from(document.querySelectorAll(".tab-pill"));
+        const sessionId = "kimes-" + Math.random().toString(36).slice(2, 12);
+        let currentFaqUser = "visitor";
+
+        function _setLayoutVars() {
+          const hh = headerEl ? headerEl.getBoundingClientRect().height : 0;
+          const ch = composerEl ? composerEl.getBoundingClientRect().height : 0;
+          document.documentElement.style.setProperty("--header-h", Math.max(0, Math.ceil(hh)) + "px");
+          document.documentElement.style.setProperty("--composer-h", Math.max(0, Math.ceil(ch)) + "px");
+        }
+
+        _setLayoutVars();
+        window.addEventListener("resize", _setLayoutVars, { passive: true });
+        if (window.ResizeObserver) {
+          const ro = new ResizeObserver(_setLayoutVars);
+          if (headerEl) ro.observe(headerEl);
+          if (composerEl) ro.observe(composerEl);
+        }
+
+        // 사용자가 위로 스크롤한 상태가 아니면(바닥 근처) 계속 바닥에 붙인다.
+        // 바닥 근처 판단 기준(px). 카드/이미지 로딩으로 높이가 늦게 늘어도 자연스럽게 따라간다.
+        const _STICKY_BOTTOM_THRESHOLD_PX = 140;
+        let _shouldStickToBottom = true;
+
+        const _scrollAnchor = document.createElement("div");
+        _scrollAnchor.setAttribute("data-scroll-anchor", "1");
+        _scrollAnchor.style.height = "1px";
+        _scrollAnchor.style.width = "1px";
+        _scrollAnchor.style.pointerEvents = "none";
+        log.appendChild(_scrollAnchor);
+
+        function _isNearBottom() {
+          const remaining = log.scrollHeight - log.scrollTop - log.clientHeight;
+          return remaining <= _STICKY_BOTTOM_THRESHOLD_PX;
+        }
+
+        log.addEventListener(
+          "scroll",
+          function () {
+            _shouldStickToBottom = _isNearBottom();
+          },
+          { passive: true }
+        );
+
+        function scrollToBottomIfSticky(behavior) {
+          if (!_shouldStickToBottom) return;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              try {
+                _scrollAnchor.scrollIntoView({ block: "end", behavior: behavior || "auto" });
+              } catch (e) {
+                log.scrollTop = log.scrollHeight;
+              }
+            });
+          });
+        }
+
+        // “로딩 버블/새 메시지 생성 직후”처럼 반드시 최신을 보여줘야 할 때는 조건 없이 강제 스크롤한다.
+        function forceScrollToBottom() {
+          _shouldStickToBottom = true;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              try {
+                _scrollAnchor.scrollIntoView({ block: "end", behavior: "auto" });
+              } catch (e) {
+                log.scrollTop = log.scrollHeight;
+              }
+            });
+          });
+        }
+
+        // 스트리밍/이미지 로딩처럼 레이아웃이 늦게 커지는 케이스까지 따라가기
+        function scheduleStickyScroll() {
+          scrollToBottomIfSticky("auto");
+          window.setTimeout(() => scrollToBottomIfSticky("auto"), 60);
+          window.setTimeout(() => scrollToBottomIfSticky("auto"), 180);
+        }
+
+        function addMessage(role, text) {
+          const box = document.createElement("div");
+          box.className = "msg " + (role === "user" ? "user" : "bot");
+          const textEl = document.createElement("div");
+          textEl.className = "msg-text";
+          textEl.textContent = text;
+          box.appendChild(textEl);
+          log.insertBefore(box, _scrollAnchor);
+          // 새 메시지는 부드럽게 따라가되, 스트리밍 중엔 아래쪽에서 auto로 호출된다.
+          scrollToBottomIfSticky("smooth");
+          window.setTimeout(() => scrollToBottomIfSticky("auto"), 80);
+          return box;
+        }
+
+        function showBotTypingPlaceholder() {
+          const loadingBox = document.createElement("div");
+          loadingBox.className = "msg bot";
+          const label = document.createElement("div");
+          label.className = "msg-text";
+          label.innerHTML = '<span class="typing-dots" aria-label="답변 준비 중"><span></span><span></span><span></span></span>';
+          loadingBox.appendChild(label);
+          log.insertBefore(loadingBox, _scrollAnchor);
+          // 로딩 UI는 “항상 보여야” 하므로 강제 바닥 스크롤
+          forceScrollToBottom();
+          scheduleStickyScroll();
+          return {
+            el: loadingBox,
+            stop: function () {},
+            remove: function () {
+              if (loadingBox.parentNode) loadingBox.remove();
+            },
+            stopAndRemove: function () {
+              this.remove();
+            },
+          };
+        }
+
+        function takeNextDisplayChunk(s) {
+          if (!s) return "";
+          if (/^\s/.test(s)) {
+            const m = s.match(/^\s+/);
+            return m ? m[0] : s[0];
+          }
+          const m = s.match(/^[^\s]+/);
+          return m ? m[0] : s[0];
+        }
+
+        function parseSsePayloadData(raw) {
+          if (raw == null || raw === "") return raw;
+          try {
+            return JSON.parse(raw);
+          } catch (e) {
+            return raw;
+          }
+        }
+
+        function renderSuggestionCarousel(botBox, cards) {
+          if (!Array.isArray(cards) || !cards.length) return;
+          if (botBox.querySelector(".suggestion-carousel")) return;
+          const wrap = document.createElement("div");
+          wrap.className = "suggestion-carousel";
+          const track = document.createElement("div");
+          track.className = "suggestion-track";
+          cards.forEach(function (c) {
+            const imgUrl = String(c.image_url || "").trim();
+            const kind = String(c.entity_kind || "");
+            const follow = String(c.follow_prompt || "").trim();
+            const card = document.createElement("article");
+            card.className = "suggestion-card";
+            const thumb = document.createElement("div");
+            thumb.className = "suggestion-thumb";
+            if (imgUrl) {
+              const im = document.createElement("img");
+              im.src = imgUrl;
+              im.alt = "";
+              im.referrerPolicy = "no-referrer";
+              im.loading = "lazy";
+              im.onload = function () {
+                scheduleStickyScroll();
+              };
+              im.onerror = function () {
+                thumb.innerHTML = "";
+                const ph = document.createElement("span");
+                ph.className = "suggestion-thumb-ph";
+                ph.textContent = kind === "exhibit_item" ? "이미지 없음 · 제품" : "이미지 없음 · 기업";
+                thumb.appendChild(ph);
+              };
+              thumb.appendChild(im);
+            } else {
+              const ph = document.createElement("span");
+              ph.className = "suggestion-thumb-ph";
+              ph.textContent = kind === "exhibit_item" ? "이미지 없음 · 제품" : "이미지 없음 · 기업";
+              thumb.appendChild(ph);
+            }
+            const body = document.createElement("div");
+            body.className = "suggestion-body";
+            const t = document.createElement("div");
+            t.className = "suggestion-title";
+            t.textContent = c.title || "";
+            const st = document.createElement("div");
+            st.className = "suggestion-sub";
+            st.textContent = c.subtitle || "";
+            body.appendChild(t);
+            body.appendChild(st);
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "suggestion-detail-btn";
+            btn.textContent = "자세히 보기";
+            function cardAskDetail() {
+              const payload = follow || String(c.title || "") + "에 대해 자세히 알려줘";
+              const display = stripExternalIdForDisplay(payload) || String(c.title || "").trim() || "자세히 알려줘";
+              void runQueuedChat(payload, display);
+            }
+            btn.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+              cardAskDetail();
+            });
+            card.style.cursor = "pointer";
+            card.addEventListener("click", function (ev) {
+              if (ev.target.closest("button")) return;
+              cardAskDetail();
+            });
+            card.appendChild(thumb);
+            card.appendChild(body);
+            card.appendChild(btn);
+            track.appendChild(card);
+          });
+          wrap.appendChild(track);
+          botBox.appendChild(wrap);
+        }
+
+        async function getJson(url) {
+          const res = await fetch(url);
+          const payload = await res.json();
+          if (!res.ok) {
+            throw new Error(typeof payload.detail === "string" ? payload.detail : "요청 실패");
+          }
+          return payload;
+        }
+
+        function quickmenuDisplayLabel(it) {
+          if (!it || typeof it !== "object") return "";
+          const d = String(it.quickmenu_display_label || "").trim();
+          if (d) return d;
+          for (const k of ["quickmenu_label", "subcategory", "category", "domain"]) {
+            const v = String(it[k] || "").trim();
+            if (v && v !== "-") return v;
+          }
+          return String(it.qna_code || "").trim();
+        }
+
+        async function loadPrimaryCategories(userType) {
+          currentFaqUser = userType;
+          catStatusEl.textContent = "카테고리 로딩 중...";
+          catChipsEl.innerHTML = "";
+          catBtns.forEach((b) => {
+            b.setAttribute("data-active", String((b.getAttribute("data-user") || "") === userType));
+          });
+          try {
+            const data = await getJson("/tools/embedding/api/qa-quickmenu/primary?qa_user=" + encodeURIComponent(userType));
+            const items = data.items || [];
+            if (!items.length) {
+              catStatusEl.textContent = "표시할 카테고리가 없습니다.";
+              return;
+            }
+            items.forEach((item) => {
+              const chip = document.createElement("button");
+              chip.type = "button";
+              chip.className = "cat-chip";
+              chip.textContent = quickmenuDisplayLabel(item);
+              chip.addEventListener("click", async () => {
+                await showStoredAnswer(item.qna_code, true);
+              });
+              catChipsEl.appendChild(chip);
+            });
+            catStatusEl.textContent = "카테고리를 눌러 빠른 답변을 받을 수 있어요.";
+          } catch (e) {
+            catStatusEl.textContent = "카테고리 로드 실패: " + (e.message || String(e));
+          }
+        }
+
+        function addFaqAnswerMessage(item) {
+          const answerText = (item.answer_sample || item.answer_question || "저장된 답변이 없습니다.").trim();
+          const linkText = (item.links || "").trim();
+          return "A. " + answerText + (linkText ? "\n링크: " + linkText : "");
+        }
+
+        function sleep(ms) {
+          return new Promise((resolve) => setTimeout(resolve, ms));
+        }
+
+        async function streamFaqAnswerLikeSearch(item, followItems) {
+          const load = showBotTypingPlaceholder();
+          statusEl.classList.remove("error");
+          statusEl.textContent = "FAQ 응답 준비 중...";
+          await sleep(800);
+          load.stopAndRemove();
+
+          const botBox = document.createElement("div");
+          botBox.className = "msg bot";
+          const faqTextEl = document.createElement("div");
+          faqTextEl.className = "msg-text";
+          faqTextEl.textContent = "";
+          botBox.appendChild(faqTextEl);
+          log.insertBefore(botBox, _scrollAnchor);
+          scheduleStickyScroll();
+
+          statusEl.textContent = "답변을 표시하는 중...";
+
+          const finalText = addFaqAnswerMessage(item);
+          const tokens = finalText.split(/(\s+)/);
+          for (const tk of tokens) {
+            faqTextEl.textContent += tk;
+            scheduleStickyScroll();
+            await sleep(14 + Math.floor(Math.random() * 16));
+          }
+
+          if (Array.isArray(followItems) && followItems.length) {
+            const wrap = document.createElement("div");
+            wrap.className = "faq-follow-wrap";
+            followItems.forEach((n) => {
+              const b = document.createElement("button");
+              b.type = "button";
+              b.className = "faq-follow-btn";
+              b.textContent = quickmenuDisplayLabel(n);
+              b.addEventListener("click", async () => {
+                await showStoredAnswer(n.qna_code, true);
+              });
+              wrap.appendChild(b);
+            });
+            botBox.appendChild(wrap);
+          }
+          statusEl.textContent = "완료";
+        }
+
+        async function showStoredAnswer(qnaCode, withFollow) {
+          try {
+            const detail = await getJson("/tools/embedding/api/qa-quickmenu/" + encodeURIComponent(qnaCode));
+            const item = detail.item || {};
+            const qText = (item.question_sample || quickmenuDisplayLabel(item) || qnaCode).trim();
+            if (qText) {
+              const shown = stripExternalIdForDisplay(qText);
+              addMessage("user", shown || qText);
+            }
+
+            let nextItems = [];
+
+            if (withFollow) {
+              const resolved = Array.isArray(item.follow_questions_resolved) ? item.follow_questions_resolved : [];
+              if (resolved.length) {
+                nextItems = resolved.map((r) => {
+                  const it = r.item || {};
+                  const code = String(r.resolved_qna_code || r.code || "").trim();
+                  return {
+                    qna_code: code || String(r.code || "").trim(),
+                    quickmenu_label: quickmenuDisplayLabel(it) || code || String(r.code || "").trim(),
+                  };
+                });
+              } else {
+                const next = await getJson("/tools/embedding/api/qa-quickmenu/" + encodeURIComponent(qnaCode) + "/follow-links");
+                nextItems = next.items || [];
+              }
+              catStatusEl.textContent = nextItems.length ? "아래 버튼으로 이어서 질문할 수 있어요." : "후속 질문이 없는 항목이에요.";
+            }
+
+            await streamFaqAnswerLikeSearch(item, nextItems);
+          } catch (e) {
+            addMessage("bot", "저장 FAQ 조회 실패: " + (e.message || String(e)));
+          }
+        }
+
+        async function enqueueChat(message) {
+          const fd = new FormData();
+          fd.append("session_id", sessionId);
+          fd.append("message", message);
+          const res = await fetch("/chat", { method: "POST", body: fd });
+          const payload = await res.json();
+          if (!res.ok) {
+            throw new Error(typeof payload.detail === "string" ? payload.detail : "요청 실패");
+          }
+          return payload.request_id;
+        }
+
+        function streamAnswer(requestId, loadHandle, ctx) {
+          const load = loadHandle || showBotTypingPlaceholder();
+          let botBox = null;
+          let textEl = null;
+          let fullText = "";
+          let displayedLen = 0;
+          let drainTimer = null;
+          let doneReceived = false;
+          let settled = false;
+          let cardsSeen = false;
+
+          function settleOk() {
+            if (settled) return;
+            settled = true;
+            if (drainTimer) {
+              window.clearInterval(drainTimer);
+              drainTimer = null;
+            }
+            resolveFn();
+          }
+
+          function settleErr(err) {
+            if (settled) return;
+            settled = true;
+            if (drainTimer) {
+              window.clearInterval(drainTimer);
+              drainTimer = null;
+            }
+            load.stopAndRemove();
+            rejectFn(err);
+          }
+
+          function tryFinishTyping() {
+            if (!doneReceived) return;
+            if (textEl && displayedLen < fullText.length) return;
+            settleOk();
+          }
+
+          function shouldSuggestRefine(answerText, hasCards) {
+            const t = String(answerText || "").trim();
+            if (!t) return true;
+            if (hasCards) return false;
+            if (t.length < 50) return true;
+            if (/응답이 없습니다|정보가 부족|정보 부족|자료가 부족|자료 부족|찾을 수 없|검색 결과가 없|관련 정보가 없/i.test(t)) return true;
+            return false;
+          }
+
+          function appendRefinePromptIfNeeded() {
+            if (!shouldSuggestRefine(fullText, cardsSeen)) return;
+            const q = (ctx && ctx.displayText) ? String(ctx.displayText).trim() : "";
+            const hint =
+              "찾으시는 정보가 충분하지 않을 수 있어요. 아래처럼 질문을 조금 더 구체화해 주세요.\n" +
+              "- 대상(회사명/제품명)\n" +
+              "- 어떤 정보(부스/연락처/가격/스펙 등)\n" +
+              "- 조건(지역/카테고리/모델명)\n";
+
+            const box = document.createElement("div");
+            box.className = "msg bot";
+            const text = document.createElement("div");
+            text.className = "msg-text";
+            text.textContent = hint;
+            box.appendChild(text);
+
+            const wrap = document.createElement("div");
+            wrap.className = "faq-follow-wrap";
+            const samples = [
+              q ? (q + "\n(부스 번호와 담당자 연락처 알려줘)") : "회사명: ○○○\n부스 번호와 담당자 연락처 알려줘",
+              q ? (q + "\n(관련 제품 3개와 특징 비교해줘)") : "제품명: ○○○\n관련 제품 3개와 특징 비교해줘",
+              q ? (q + "\n(키워드 2~3개로 다시 찾아줘)") : "키워드 2~3개로 다시 찾아줘 (예: 치과, 임플란트, CT)",
+            ];
+            samples.forEach((s) => {
+              const b = document.createElement("button");
+              b.type = "button";
+              b.className = "faq-follow-btn";
+              b.textContent = String(s).split("\n")[0].slice(0, 32) + "…";
+              b.addEventListener("click", () => {
+                input.value = String(s);
+                input.focus();
+              });
+              wrap.appendChild(b);
+            });
+            box.appendChild(wrap);
+            log.insertBefore(box, _scrollAnchor);
+            scheduleStickyScroll();
+          }
+
+          function ensureBotBox() {
+            if (botBox) return;
+            load.stopAndRemove();
+            botBox = document.createElement("div");
+            botBox.className = "msg bot";
+            textEl = document.createElement("div");
+            textEl.className = "msg-text";
+            textEl.textContent = "";
+            botBox.appendChild(textEl);
+            log.insertBefore(botBox, _scrollAnchor);
+            scheduleStickyScroll();
+          }
+
+          function startDrainIfNeeded() {
+            if (drainTimer || !textEl) return;
+            drainTimer = window.setInterval(function () {
+              if (!textEl) return;
+              const backlog = fullText.length - displayedLen;
+              const bursts = backlog > 200 ? 6 : backlog > 100 ? 4 : backlog > 40 ? 2 : 1;
+              for (let b = 0; b < bursts && displayedLen < fullText.length; b++) {
+                const rest = fullText.slice(displayedLen);
+                const chunk = takeNextDisplayChunk(rest);
+                displayedLen += chunk.length;
+                textEl.textContent = fullText.slice(0, displayedLen);
+              }
+              scheduleStickyScroll();
+              tryFinishTyping();
+            }, 18);
+          }
+
+          let resolveFn = function () {};
+          let rejectFn = function () {};
+
+          return new Promise(function (resolve, reject) {
+            resolveFn = resolve;
+            rejectFn = reject;
+            const es = new EventSource("/stream/" + encodeURIComponent(requestId));
+            es.addEventListener("token", function (evt) {
+              const piece = parseSsePayloadData(evt.data);
+              const add = typeof piece === "string" ? piece : String(piece || "");
+              fullText += add;
+              ensureBotBox();
+              statusEl.textContent = "응답을 작성하는 중...";
+              startDrainIfNeeded();
+            });
+            es.addEventListener("cards", function (evt) {
+              const cards = parseSsePayloadData(evt.data);
+              if (Array.isArray(cards) && cards.length) {
+                cardsSeen = true;
+                ensureBotBox();
+                renderSuggestionCarousel(botBox, cards);
+                scheduleStickyScroll();
+              }
+            });
+            es.addEventListener("done", function () {
+              doneReceived = true;
+              es.close();
+              if (textEl) {
+                if (displayedLen >= fullText.length) {
+                  appendRefinePromptIfNeeded();
+                  settleOk();
+                } else {
+                  startDrainIfNeeded();
+                }
+              } else if (!fullText) {
+                load.stopAndRemove();
+                addMessage("bot", "응답이 없습니다.");
+                appendRefinePromptIfNeeded();
+                settleOk();
+              } else {
+                ensureBotBox();
+                startDrainIfNeeded();
+              }
+              tryFinishTyping();
+            });
+            es.addEventListener("error", function (evt) {
+              es.close();
+              const d = parseSsePayloadData(evt.data);
+              settleErr(new Error(typeof d === "string" ? d : "스트림 오류"));
+            });
+            es.onerror = function () {
+              if (settled) return;
+              if (doneReceived) return;
+              es.close();
+              settleErr(new Error("SSE 연결이 종료되었습니다."));
+            };
+          });
+        }
+
+        async function runQueuedChat(fullMessage, displayMessage) {
+          const text = String(fullMessage || "").trim();
+          if (!text) return;
+          const display = displayMessage != null ? String(displayMessage).trim() : text;
+          sendBtn.disabled = true;
+          statusEl.classList.remove("error");
+          statusEl.textContent = "요청을 등록하는 중...";
+          // 전송 직후에는 사용자가 위로 올렸더라도 최신 흐름이 보이도록 바닥 고정 모드로 전환
+          _shouldStickToBottom = true;
+          addMessage("user", display || stripExternalIdForDisplay(text));
+          input.value = "";
+          const chatLoad = showBotTypingPlaceholder();
+          forceScrollToBottom();
+
+          try {
+            const requestId = await enqueueChat(text);
+            statusEl.textContent = "응답을 기다리는 중...";
+            await streamAnswer(requestId, chatLoad, { displayText: display || stripExternalIdForDisplay(text) });
+            statusEl.textContent = "완료";
+          } catch (err) {
+            chatLoad.stopAndRemove();
+            addMessage("bot", "오류: " + (err.message || String(err)));
+            statusEl.classList.add("error");
+            statusEl.textContent = "오류가 발생했습니다.";
+          } finally {
+            sendBtn.disabled = false;
+          }
+        }
+
+        catBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            loadPrimaryCategories(btn.getAttribute("data-user") || "visitor");
+          });
+        });
+
+        form.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          const text = (input.value || "").trim();
+          if (!text) return;
+          await runQueuedChat(text);
+        });
+
+        addMessage(
+          "bot",
+          "안녕하세요. KIMES 챗봇입니다. 위 FAQ 주제를 선택하시거나, 궁금하신 내용을 아래에 입력해 주세요."
+        );
+        loadPrimaryCategories(currentFaqUser);
+      })();
+    </script>
+  </body>
+</html>

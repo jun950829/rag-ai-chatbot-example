@@ -1,6 +1,6 @@
 """Embedding tool UI + RAG 검색 API.
 
-- **HTML**: ``/tools/embedding``, ``/tools/chatbot`` 등 Jinja 템플릿
+- **HTML**: ``/tools/embedding``, ``/tools/chatbot``, ``/kimeschat`` 등 Jinja 템플릿
 - **검색**: ``POST .../api/search`` → ``run_vector_search`` (의도 분류·벡터 검색·선택적 OpenAI 답변)
 - **QA 퀵메뉴**: ``GET .../api/qa-quickmenu/...`` → ``kprint_qa_quickmenu`` (CSV 적재 테이블, 카테고리 탐색)
 - 임베딩 추론은 별도 ``EMBEDDING_SERVICE_URL`` 서버로 프록시
@@ -103,6 +103,17 @@ def chatbot_tool_page(request: Request):
         },
     )
 
+
+@router.get("/kimeschat", include_in_schema=False)
+def kimeschat_page(request: Request):
+    """운영용 KIMES 챗봇 UI (테스트용 ``/tools/chatbot`` 과 분리)."""
+    return _TEMPLATES.TemplateResponse(
+        request,
+        "kimeschat.html",
+        {
+            "embedding_service_configured": bool(_embedding_base(get_settings())),
+        },
+    )
 
 
 @router.get("/tools/chatbot-queue", include_in_schema=False)
