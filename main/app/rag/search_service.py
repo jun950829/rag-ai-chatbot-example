@@ -187,6 +187,10 @@ def _clamp01(x: float) -> float:
     return max(0.05, min(0.95, float(x)))
 
 
+def _clamp01(x: float) -> float:
+    return max(0.05, min(0.95, float(x)))
+
+
 async def run_vector_search(
     *,
     query: str,
@@ -254,6 +258,32 @@ async def run_vector_search(
         hist_texts = [m.get("message", "") for m in db_memory.get_recent()][-5:]
         is_fu, fu_conf, fu_meta = is_followup_v2(current=query, history=hist_texts)
         fu_state = (is_fu, fu_conf, fu_meta)
+
+    st = get_settings()
+    i_openai = st.retrieval_intent_use_openai if intent_use_openai is None else intent_use_openai
+    min_q = st.retrieval_min_queries if retrieval_min_queries is None else int(retrieval_min_queries)
+    max_q = st.retrieval_max_queries if retrieval_max_queries is None else int(retrieval_max_queries)
+    min_q = max(1, min_q)
+    max_q = max(min_q, max_q)
+    sc = float(st.retrieval_score_cutoff if retrieval_score_cutoff is None else retrieval_score_cutoff)
+    er = _clamp01(float(st.retrieval_evidence_ratio if retrieval_evidence_ratio is None else retrieval_evidence_ratio))
+    rk = max(1, int(st.retrieval_rrf_k if retrieval_rrf_k is None else retrieval_rrf_k))
+    cl = max(1, int(st.retrieval_context_limit if retrieval_context_limit is None else retrieval_context_limit))
+    tkpq_raw = st.retrieval_top_k_per_query if retrieval_top_k_per_query is None else retrieval_top_k_per_query
+    tkpq = max(6, int(top_k)) if tkpq_raw is None else max(1, int(tkpq_raw))
+
+    tuning_meta = {
+        "intent_use_openai": i_openai,
+        "min_queries": min_q,
+        "max_queries": max_q,
+        "score_cutoff": sc,
+        "evidence_ratio": er,
+        "rrf_k": rk,
+        "context_limit": cl,
+        "top_k_per_query": tkpq,
+        "final_top_k": max(1, int(top_k)),
+    }
+    logger.info("[search] retrieval_pipeline ... tuning=%s", tuning_meta)
 
     st = get_settings()
     i_openai = st.retrieval_intent_use_openai if intent_use_openai is None else intent_use_openai
