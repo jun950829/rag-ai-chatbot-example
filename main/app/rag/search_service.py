@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from functools import partial
 from typing import Any
@@ -39,6 +40,370 @@ from app.rag.suggestion_cards import build_retrieval_suggestion_cards
 logger = logging.getLogger(__name__)
 _DEFAULT_MEMORY = ConversationMemory(max_turns=5)
 _ANSWER_OPENAI_MODEL = "gpt-5-mini"
+
+_FAQ_HINT_KEYWORDS = (
+    "입장",
+    "사전등록",
+    "등록",
+    "주차",
+    "운영시간",
+    "관람시간",
+    "일정",
+    "장소",
+    "주소",
+    "오시는길",
+    "오시는 길",
+    "교통",
+    "셔틀",
+    "무료",
+    "요금",
+    "가격",
+    "비용",
+    "환불",
+    "결제",
+    "부스",
+    "부스신청",
+    "신청",
+    "참가",
+    "참관",
+    "출입증",
+    "배지",
+    "문의",
+    "연락처",
+    "홈페이지",
+    "규정",
+    "반입",
+    "주최",
+    "주관",
+)
+
+
+def _norm_faq_text(s: str) -> str:
+    t = (s or "").strip().lower()
+    if not t:
+        return ""
+    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"[^0-9a-z가-힣\s]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _faq_like_query(query: str) -> bool:
+    q = _norm_faq_text(query)
+    if not q:
+        return False
+    if any(k in query for k in _FAQ_HINT_KEYWORDS):
+        return True
+    if len(q) <= 24 and any(x in q for x in ("어떻게", "방법", "가능", "되나요", "되나", "어디", "언제", "얼마", "비용")):
+        return True
+    return False
+
+
+def _faq_tokenize(q_norm: str) -> list[str]:
+    toks = [t for t in q_norm.split(" ") if len(t) >= 2]
+    stop = {"어떻게", "방법", "가능", "되나요", "되나", "어디", "언제", "얼마", "문의", "안내", "정보"}
+    toks = [t for t in toks if t not in stop]
+    # FAQ에서 표현이 자주 바뀌는 동의어를 토큰으로 보강(=같은 DB 정답으로 안정 매핑)
+    q = " " + q_norm + " "
+    if " 출입증 " in q or " 배지 " in q or " badge " in q:
+        toks.extend(["출입증", "배지"])
+    if " 등록대 " in q or " 데스크 " in q:
+        toks.extend(["수령", "위치"])
+    if " 수령 " in q or " 발급 " in q or " 교환 " in q:
+        toks.append("수령")
+    if " 위치 " in q or " 어디 " in q:
+        toks.append("위치")
+    toks.sort(key=len, reverse=True)
+    # 중복 제거 후 상위만
+    dedup: list[str] = []
+    seen: set[str] = set()
+    for t in toks:
+        if t in seen:
+            continue
+        seen.add(t)
+        dedup.append(t)
+    return dedup[:10]
+
+
+def _faq_score(query_norm: str, cand_norm: str, *, query_tokens: list[str]) -> float:
+    if not cand_norm:
+        return 0.0
+    if query_norm == cand_norm:
+        return 1.0
+    if query_norm and query_norm in cand_norm:
+        return 0.92
+    if cand_norm and cand_norm in query_norm:
+        return 0.86
+    hit = 0
+    for t in query_tokens:
+        if t and t in cand_norm:
+            hit += 1
+    if not query_tokens:
+        return 0.0
+    cov = hit / max(1, len(query_tokens))
+    return min(0.85, cov * 0.85)
+
+
+def _faq_lookup_sync(*, engine, query: str, limit: int = 18, qa_user: str | None = None) -> dict[str, Any] | None:
+    """FAQ 테이블에서 후보를 뽑아 점수화 후 best를 반환(동기 SQL)."""
+    from sqlalchemy import text
+
+    q_norm = _norm_faq_text(query)
+    if not q_norm:
+        return None
+    toks = _faq_tokenize(q_norm)
+    if not toks:
+        return None
+
+    conds = []
+    params: dict[str, Any] = {"lim": int(limit)}
+    for i, t in enumerate(toks[:6]):
+        params[f"t{i}"] = f"%{t}%"
+        conds.append(
+            f"(\n"
+            f"  question_sample ILIKE :t{i}\n"
+            f"  OR quickmenu_label ILIKE :t{i}\n"
+            f"  OR category ILIKE :t{i}\n"
+            f"  OR subcategory ILIKE :t{i}\n"
+            f"  OR domain ILIKE :t{i}\n"
+            f"  OR answer_sample ILIKE :t{i}\n"
+            f"  OR links ILIKE :t{i}\n"
+            f"  OR notes ILIKE :t{i}\n"
+            f")"
+        )
+    where_sql = " OR ".join(conds) if conds else "FALSE"
+
+    # qa_user 필터 규칙:
+    # - 모드가 visitor/exhibitor면 해당 user + (NULL/빈값)도 허용
+    # - qa_user가 없으면 전체
+    user_filter = ""
+    if (qa_user or "").strip():
+        params["qa_user"] = (qa_user or "").strip()
+        user_filter = " AND (qa_user = :qa_user OR qa_user IS NULL OR qa_user = '')"
+
+    sql = text(
+        f"""
+        SELECT qna_code, qa_user, domain, category, subcategory,
+               quickmenu_label, question_sample, answer_sample, links, notes,
+               follow_question1, follow_question2, follow_question3, follow_question4
+          FROM kprint_qa_quickmenu
+         WHERE ({where_sql}){user_filter}
+         LIMIT :lim
+        """
+    )
+    with engine.connect() as conn:
+        rows = list(conn.execute(sql, params).mappings().all())
+    if not rows:
+        return None
+
+    best = None
+    best_score = 0.0
+    scored: list[dict[str, Any]] = []
+    for r in rows:
+        cand_text = " ".join(
+            str(x or "")
+            for x in (
+                r.get("question_sample"),
+                r.get("quickmenu_label"),
+                r.get("subcategory"),
+                r.get("category"),
+                r.get("domain"),
+            )
+        ).strip()
+        base = _faq_score(q_norm, _norm_faq_text(cand_text), query_tokens=toks)
+        # 카테고리/서브카테고리 일치에는 추가 가산점(정답 고정)
+        cat_norm = _norm_faq_text(" ".join(str(x or "") for x in (r.get("category"), r.get("subcategory"), r.get("domain"))))
+        boost = 0.0
+        for t in toks[:6]:
+            if t and t in cat_norm:
+                boost += 0.03
+        s = min(0.95, base + boost)
+        item = dict(r)
+        item["_score"] = float(s)
+        scored.append(item)
+        if s > best_score:
+            best_score = s
+            best = item
+
+    scored.sort(key=lambda x: float(x.get("_score") or 0.0), reverse=True)
+    if not best:
+        return None
+
+    if best_score >= 0.82:
+        mode = "faq_exactish"
+    elif best_score >= 0.68:
+        mode = "faq_suggest"
+    else:
+        return None
+
+    best_out = {k: v for k, v in best.items() if not str(k).startswith("_")}
+    candidates = [
+        {k: v for k, v in s.items() if k in {"qna_code", "quickmenu_label", "question_sample", "category", "subcategory", "domain", "_score"}}
+        for s in scored[:5]
+    ]
+    return {
+        "mode": mode,
+        "best_score": float(best_score),
+        "best": best_out,
+        "candidates": candidates,
+    }
+
+
+def _faq_followups_sync(*, engine, qna_code: str, qa_user: str | None = None) -> list[dict[str, Any]]:
+    """FAQ 답변 하단에 노출할 follow_question1~4 버튼을 반환(동기 SQL)."""
+    from sqlalchemy import text
+
+    code = (qna_code or "").strip()
+    if not code:
+        return []
+    params: dict[str, Any] = {"code": code}
+    user_filter = ""
+    if (qa_user or "").strip():
+        params["qa_user"] = (qa_user or "").strip()
+        user_filter = " AND (qa_user = :qa_user OR qa_user IS NULL OR qa_user = '')"
+
+    row_sql = text(
+        f"""
+        SELECT follow_question1, follow_question2, follow_question3, follow_question4
+          FROM kprint_qa_quickmenu
+         WHERE qna_code = :code{user_filter}
+         LIMIT 1
+        """
+    )
+    with engine.connect() as conn:
+        row = conn.execute(row_sql, params).mappings().first()
+        if not row:
+            return []
+        raw_codes = [str(row.get(k) or "").strip() for k in ("follow_question1", "follow_question2", "follow_question3", "follow_question4")]
+        codes = [c for c in raw_codes if c]
+        if not codes:
+            return []
+
+        # km_ → kp_ 후보 변환 포함
+        expanded: list[str] = []
+        for c in codes:
+            expanded.append(c)
+            if c.startswith("km_"):
+                expanded.append("kp_" + c[3:])
+        # dedupe preserve order
+        seen: set[str] = set()
+        expanded2: list[str] = []
+        for c in expanded:
+            if c in seen:
+                continue
+            seen.add(c)
+            expanded2.append(c)
+
+        in_params = {f"c{i}": v for i, v in enumerate(expanded2)}
+        in_list = ", ".join([f":c{i}" for i in range(len(expanded2))]) or "NULL"
+        items_sql = text(
+            f"""
+            SELECT qna_code, quickmenu_label, question_sample, category, subcategory, domain
+              FROM kprint_qa_quickmenu
+             WHERE qna_code IN ({in_list}){user_filter}
+            """
+        )
+        res = conn.execute(
+            items_sql,
+            {**in_params, **({"qa_user": params["qa_user"]} if "qa_user" in params else {})},
+        ).mappings().all()
+        by_code = {str(r.get("qna_code") or ""): dict(r) for r in res}
+
+    out: list[dict[str, Any]] = []
+    for c in codes:
+        cand_codes = [c, ("kp_" + c[3:]) if c.startswith("km_") else ""]
+        item = None
+        resolved_code = None
+        for cc in cand_codes:
+            if cc and cc in by_code:
+                item = by_code[cc]
+                resolved_code = cc
+                break
+        if not item:
+            continue
+        label = (
+            (item.get("question_sample") or "")
+            or (item.get("quickmenu_label") or "")
+            or (item.get("subcategory") or "")
+            or (item.get("category") or "")
+            or (item.get("domain") or "")
+            or (resolved_code or "")
+        )
+        label = str(label).strip()
+        if not label:
+            continue
+        out.append({"qna_code": resolved_code, "label": label, "ask": label})
+    return out[:4]
+
+
+def _rag_followups_from_context(*, query: str, intent: str, cards: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """일반 질문도 FAQ와 같은 follow-up 버튼 UI를 붙이기 위한 기본 followups."""
+    title = ""
+    if isinstance(cards, list) and cards:
+        title = str((cards[0] or {}).get("title") or "").strip()
+    subj = title or (query or "").strip()
+    if intent in {"company"}:
+        return [
+            {"label": "부스 위치", "ask": f"{subj} 부스 위치 알려줘"},
+            {"label": "연락처", "ask": f"{subj} 담당자 연락처/이메일 알려줘"},
+            {"label": "대표 제품", "ask": f"{subj} 대표 제품(전시품) 3개 알려줘"},
+            {"label": "상세 소개", "ask": f"{subj} 회사 소개를 더 자세히 알려줘"},
+        ]
+    if intent in {"product"}:
+        return [
+            {"label": "제조사/업체", "ask": f"{subj} 제조사/참가업체가 어디야?"},
+            {"label": "스펙", "ask": f"{subj} 주요 스펙/특징 정리해줘"},
+            {"label": "가격/구매", "ask": f"{subj} 가격대나 구매/문의 방법 알려줘"},
+            {"label": "비교", "ask": f"{subj} 비슷한 제품 3개와 차이점 비교해줘"},
+        ]
+    # fallback
+    return [
+        {"label": "핵심 요약", "ask": f"{subj} 핵심만 요약해줘"},
+        {"label": "관련 항목", "ask": f"{subj} 관련 업체/제품 더 찾아줘"},
+        {"label": "조건 추가", "ask": f"{subj} 조건을 넣어서 다시 찾아줘"},
+    ]
+
+async def _maybe_answer_from_faq(*, engine, query: str, qa_user: str | None = None) -> dict[str, Any] | None:
+    """FAQ-like 질문이면 FAQ DB에서 답변을 시도한다."""
+    if not _faq_like_query(query):
+        return None
+    match = await asyncio.to_thread(_faq_lookup_sync, engine=engine, query=query, limit=22, qa_user=qa_user)
+    if not match:
+        return None
+
+    best = match["best"] or {}
+    answer_text = (best.get("answer_sample") or "").strip()
+    links = (best.get("links") or "").strip()
+    if links:
+        answer_text = (answer_text + ("\n\n링크: " + links)).strip()
+
+    if match["mode"] == "faq_suggest":
+        cands = match.get("candidates") or []
+        lines = ["질문이 FAQ와 비슷해요. 아래 중 가장 가까운 항목을 선택해서 다시 질문해 주세요."]
+        for idx, c in enumerate(cands, start=1):
+            label = (c.get("question_sample") or c.get("quickmenu_label") or c.get("subcategory") or c.get("qna_code") or "").strip()
+            if label:
+                lines.append(f"{idx}. {label}")
+        return {
+            "answer": "\n".join(lines).strip(),
+            "answer_meta": {"mode": "faq_suggest", "best_score": match.get("best_score"), "candidates": cands},
+            "results": [],
+            "cards": [],
+        }
+
+    if not answer_text:
+        return None
+    return {
+        "answer": answer_text,
+        "answer_meta": {
+            "mode": "faq",
+            "qna_code": best.get("qna_code"),
+            "qa_user": best.get("qa_user"),
+            "best_score": match.get("best_score"),
+        },
+        "results": [],
+        "cards": [],
+    }
 
 
 def _sync_chat_completions_text(
@@ -205,6 +570,8 @@ async def run_vector_search(
     embedding_remote_base_url: str | None,
     memory: ConversationMemory | None = None,
     session_id: str | None = None,
+    faq_only: bool = False,
+    faq_user: str | None = None,
     intent_use_openai: bool | None = None,
     retrieval_min_queries: int | None = None,
     retrieval_max_queries: int | None = None,
@@ -241,6 +608,101 @@ async def run_vector_search(
         answer_mode,
         (session_id or "")[:32] or "-",
     )
+
+    # --- FAQ 게이트 ---
+    # 운영 UI에서 "FAQ 모드"일 때만 FAQ DB를 본다.
+    # (RAG 모드에서는 FAQ 안내/차단 메시지가 절대 나오면 안 됨)
+    enable_faq_gate = bool(faq_only or (faq_user or "").strip())
+    faq_payload = None
+    if enable_faq_gate:
+        faq_payload = (
+            await _maybe_answer_from_faq(engine=_sync_search_db_engine, query=query, qa_user=faq_user)
+            if not faq_only
+            else await asyncio.to_thread(_faq_lookup_sync, engine=_sync_search_db_engine, query=query, limit=40, qa_user=faq_user)  # type: ignore[arg-type]
+        )
+    if faq_only and isinstance(faq_payload, dict) and "best" in faq_payload:
+        # faq_only 모드에서는 _maybe_answer_from_faq()의 faq_like 조건을 건너뛰고,
+        # DB 매칭 실패 시에는 RAG로 가지 않고 안내로 끝낸다.
+        match = faq_payload
+        best = (match.get("best") or {}) if isinstance(match, dict) else {}
+        answer_text = (best.get("answer_sample") or "").strip()
+        links = (best.get("links") or "").strip()
+        if answer_text and links:
+            answer_text = (answer_text + ("\n\n링크: " + links)).strip()
+        if answer_text and float(match.get("best_score") or 0.0) >= 0.70:
+            ans = answer_text
+            cards: list[Any] = []
+            followups = _faq_followups_sync(engine=_sync_search_db_engine, qna_code=str(best.get("qna_code") or ""), qa_user=faq_user)
+            return {
+                "query": query,
+                "count": 0,
+                "results": [],
+                "answer": ans,
+                "answer_meta": {
+                    "mode": "faq_only",
+                    "qna_code": best.get("qna_code"),
+                    "qa_user": best.get("qa_user"),
+                    "best_score": match.get("best_score"),
+                },
+                "cards": cards,
+                "follow_up_questions": followups,
+                "answer_korean": ans,
+                "suggestion_cards": cards,
+            }
+        # 매칭 실패/점수 낮음: FAQ 모드에서는 LLM/RAG로 넘어가지 않고 재질문 유도
+        msg = (
+            "FAQ 모드에서는 등록된 안내(데이터베이스)에서만 답변합니다.\n"
+            "질문을 조금 더 구체화해 주세요. 예: “출입증 수령 위치”, “주차 요금”, “사전등록 방법”"
+        )
+        return {
+            "query": query,
+            "count": 0,
+            "results": [],
+            "answer": msg,
+            "answer_meta": {"mode": "faq_only_no_match", "best_score": match.get("best_score")},
+            "cards": [],
+            "answer_korean": msg,
+            "suggestion_cards": [],
+        }
+
+    # 일반 모드의 FAQ 게이트
+    if faq_payload is not None:
+        logger.info("[search] faq answered mode=%s", (faq_payload.get("answer_meta") or {}).get("mode"))
+        ans = str(faq_payload.get("answer") or "").strip()
+        cards: list[Any] = []
+        qna_code = str(((faq_payload.get("answer_meta") or {}).get("qna_code")) or "")
+        followups = _faq_followups_sync(engine=_sync_search_db_engine, qna_code=qna_code, qa_user=faq_user) if qna_code else []
+        return {
+            "query": query,
+            "count": 0,
+            "results": [],
+            # UI(embedding tool / kimeschat) 호환
+            "answer": ans,
+            "answer_meta": faq_payload.get("answer_meta") or {"mode": "faq"},
+            "cards": cards,
+            "follow_up_questions": followups,
+            # worker(embedding/worker) 호환
+            "answer_korean": ans,
+            "suggestion_cards": cards,
+        }
+
+    # FAQ 모드에서만: FAQ로 강하게 보이는데 DB 매칭이 안 되면, RAG/LLM로 넘어가지 않고 안내로 종료한다.
+    if enable_faq_gate and _faq_like_query(query):
+        msg = (
+            "등록된 FAQ 답변을 찾지 못했어요.\n"
+            "질문을 조금 더 구체화하거나, 상단 FAQ 카테고리 버튼에서 항목을 선택해 주세요.\n\n"
+            "예) 출입증 수령 위치 / 주차 요금 / 사전등록 방법 / 셔틀 운행 시간"
+        )
+        return {
+            "query": query,
+            "count": 0,
+            "results": [],
+            "answer": msg,
+            "answer_meta": {"mode": "faq_no_match"},
+            "cards": [],
+            "answer_korean": msg,
+            "suggestion_cards": [],
+        }
 
     if session_id:
         from app.services import is_followup_v2
@@ -432,11 +894,24 @@ async def run_vector_search(
     step_logs.append(answer_step_log)
 
     suggestion_cards: list[dict[str, Any]] = []
+    followups_rag: list[dict[str, Any]] = []
     if response_mode == "retrieval" and results:
         try:
             suggestion_cards = await build_retrieval_suggestion_cards(results)
         except Exception as e:
             logger.warning("[search] suggestion_cards skipped: %s", e)
+        # 카드 유무와 intent에 따라 후속질문 버튼을 구성 (카테고리 질문 UI와 동일한 형태로 노출)
+        followups_rag = _rag_followups_from_context(
+            query=query,
+            intent=str(retrieval_payload.get("intent") or ""),
+            cards=suggestion_cards,
+        )
+    else:
+        followups_rag = _rag_followups_from_context(
+            query=query,
+            intent=str(retrieval_payload.get("intent") or ""),
+            cards=suggestion_cards,
+        )
 
     if memory is None:
         _DEFAULT_MEMORY.add("assistant", answer_korean)
@@ -505,8 +980,13 @@ async def run_vector_search(
             "openai_usage_summary": openai_usage,
             "tuning_applied": tuning_meta,
         },
-        "answer_korean": answer_korean,
+        # UI 호환
+        "answer": answer_korean,
         "answer_meta": answer_meta,
         "results": results,
+        "cards": suggestion_cards,
+        "follow_up_questions": followups_rag,
+        # worker 호환
+        "answer_korean": answer_korean,
         "suggestion_cards": suggestion_cards,
     }
