@@ -133,10 +133,6 @@
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow);
       }
-      .faq-panel[data-hidden="true"] {
-        display: none;
-      }
-
       .faq-tabs {
         display: flex;
         gap: 8px;
@@ -626,7 +622,6 @@
         const composerEl = document.getElementById("kimes-composer");
         const modeOverlayEl = document.getElementById("mode-overlay");
         const modeTitleEl = document.getElementById("mode-title");
-        const faqPanelEl = document.getElementById("faq-panel");
         const catChipsEl = document.getElementById("cat-chips");
         const catStatusEl = document.getElementById("cat-status");
         const catBtns = Array.from(document.querySelectorAll(".tab-pill"));
@@ -812,6 +807,27 @@
             st.textContent = c.subtitle || "";
             body.appendChild(t);
             body.appendChild(st);
+            // 프로필 요약(내부 id/key 노출 금지)
+            const items = Array.isArray(c.profile_items) ? c.profile_items : [];
+            if (items.length) {
+              const ul = document.createElement("div");
+              ul.className = "suggestion-sub";
+              const lines = items
+                .map((it) => {
+                  const lab = String((it && it.label) || "").trim();
+                  const val = String((it && it.value) || "").trim();
+                  if (!lab || !val) return "";
+                  return lab + ": " + val;
+                })
+                .filter(Boolean)
+                .slice(0, 6);
+              // 너무 길면 2줄로 끊어 가독성 유지
+              const first = lines.slice(0, 3).join(" · ");
+              const second = lines.slice(3).join(" · ");
+              ul.textContent = second ? first + "\n" + second : first;
+              ul.style.whiteSpace = "pre-line";
+              body.appendChild(ul);
+            }
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "suggestion-detail-btn";
@@ -889,9 +905,6 @@
           currentFaqUser = userType;
           catStatusEl.textContent = "카테고리 로딩 중...";
           catChipsEl.innerHTML = "";
-          catBtns.forEach((b) => {
-            b.setAttribute("data-active", String((b.getAttribute("data-user") || "") === userType));
-          });
           try {
             const data = await getJson("/tools/embedding/api/qa-quickmenu/primary?qa_user=" + encodeURIComponent(userType));
             const items = data.items || [];
@@ -909,7 +922,12 @@
               });
               catChipsEl.appendChild(chip);
             });
-            catStatusEl.textContent = "카테고리를 눌러 빠른 답변을 받을 수 있어요.";
+            if (currentMode === "rag") {
+              catStatusEl.textContent =
+                "카테고리 선택 시 저장된 FAQ로 답하고, 채팅 입력은 업체·제품 검색으로 처리돼요.";
+            } else {
+              catStatusEl.textContent = "카테고리를 눌러 빠른 답변을 받을 수 있어요.";
+            }
           } catch (e) {
             catStatusEl.textContent = "카테고리 로드 실패: " + (e.message || String(e));
           }
@@ -1288,15 +1306,6 @@
               (mode === "exhibitor_faq" && u === "exhibitor");
             b.setAttribute("data-active", String(active));
           });
-          if (faqPanelEl) {
-            faqPanelEl.setAttribute("data-hidden", String(mode === "rag"));
-          }
-          if (mode === "rag") {
-            catChipsEl.innerHTML = "";
-            catStatusEl.textContent = "업체/제품 관련 질문을 입력해 주세요.";
-            return;
-          }
-          // FAQ 모드: 카테고리 로드
           loadPrimaryCategories(currentFaqUser);
         }
 

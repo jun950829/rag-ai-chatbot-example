@@ -971,12 +971,12 @@ def format_search_results_for_llm_context(results: list[dict[str, Any]]) -> str:
     if profiles:
         blocks.append("【프로필】 (전시 참가사·전시품 요약)")
         for i, r in enumerate(profiles, start=1):
-            ext = (r.get("external_id") or "").strip() or "(식별자 없음)"
             sf = (r.get("source_field") or "").strip()
             body = (r.get("content") or "").strip()
             if len(body) > 1200:
                 body = body[:1200].rstrip() + "…"
-            head = f"— 항목 {i} · {ext}"
+            # 사용자 노출/LLM 출력에 internal id(external_id 등)가 섞이지 않도록 제목에서 제거한다.
+            head = f"— 항목 {i}"
             if sf:
                 head += f" · 출처 필드: {sf}"
             blocks.append(head + "\n" + body)
@@ -984,13 +984,12 @@ def format_search_results_for_llm_context(results: list[dict[str, Any]]) -> str:
     if evidence:
         blocks.append("\n【추가 근거】 (상세·증빙 텍스트 요약, 한 줄씩)")
         for i, r in enumerate(evidence, start=1):
-            ext = (r.get("external_id") or "").strip() or "-"
             sf = (r.get("source_field") or "").strip() or "-"
             typ = (r.get("chunk_typ") or "").strip() or "-"
             c = (r.get("content") or "").strip().replace("\n", " ")
             if len(c) > 300:
                 c = c[:300].rstrip() + "…"
-            blocks.append(f"· [{i}] 유형={typ}, 식별자={ext}, 필드={sf}\n  {c}")
+            blocks.append(f"· [{i}] 유형={typ}, 필드={sf}\n  {c}")
 
     out = "\n".join(blocks).strip()
     return out or "(검색 결과 본문이 비어 있습니다.)"
@@ -1011,11 +1010,9 @@ def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str
     if profiles:
         lines.append("■ 관련 프로필")
         for r in profiles:
-            ext = (r.get("external_id") or "").strip() or "식별자 없음"
             body = (r.get("content") or "").strip()
             if not body:
                 continue
-            lines.append(f"  · {ext}")
             for part in body.split("\n"):
                 part = part.strip()
                 if part:
@@ -1025,13 +1022,12 @@ def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str
     if evidence:
         lines.append("■ 추가로 참고한 내용 (요약)")
         for r in evidence[:6]:
-            ext = (r.get("external_id") or "").strip() or "-"
             sf = (r.get("source_field") or "").strip()
             c = (r.get("content") or "").strip().replace("\n", " ")
             if len(c) > 200:
                 c = c[:200].rstrip() + "…"
             tail = f" ({sf})" if sf else ""
-            lines.append(f"  · {ext}{tail}: {c}")
+            lines.append(f"  · {tail}: {c}" if tail else f"  · {c}")
         lines.append("")
 
     lines.append("위 내용만 근거로 답변했습니다. 더 구체적인 업체명·제품명이 있으면 알려 주세요.")
