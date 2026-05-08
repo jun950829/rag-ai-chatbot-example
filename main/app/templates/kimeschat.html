@@ -833,8 +833,13 @@
             btn.className = "suggestion-detail-btn";
             btn.textContent = "자세히 보기";
             function cardAskDetail() {
-              const payload = follow || String(c.title || "") + "에 대해 자세히 알려줘";
-              const display = stripExternalIdForDisplay(payload) || String(c.title || "").trim() || "자세히 알려줘";
+              const entityType = kind === "exhibit_item" ? "product" : "company";
+              const ext = String(c.external_id || "").trim();
+              const query = String(c.title || "").trim() ? String(c.title || "").trim() + "에 대한 정보를 알려줘" : "자세히 알려줘";
+              // 서버는 JSON payload를 인식해 entity 우선 조회를 수행한다. 화면에는 query만 보여준다.
+              const payloadObj = { query, entity_type: entityType, external_id: ext };
+              const payload = JSON.stringify(payloadObj);
+              const display = query;
               void runQueuedChat(payload, display);
             }
             btn.addEventListener("click", function (ev) {
@@ -856,6 +861,8 @@
         }
 
         function renderFollowupButtons(botBox, items) {
+          // 참가 기업/제품(RAG) 모드에서는 follow-up 버튼을 노출하지 않는다.
+          if (currentMode === "rag") return;
           if (!botBox || !Array.isArray(items) || !items.length) return;
           if (botBox.querySelector(".faq-follow-wrap")) return; // 1회만
           const wrap = document.createElement("div");
@@ -922,12 +929,7 @@
               });
               catChipsEl.appendChild(chip);
             });
-            if (currentMode === "rag") {
-              catStatusEl.textContent =
-                "카테고리 선택 시 저장된 FAQ로 답하고, 채팅 입력은 업체·제품 검색으로 처리돼요.";
-            } else {
-              catStatusEl.textContent = "카테고리를 눌러 빠른 답변을 받을 수 있어요.";
-            }
+            catStatusEl.textContent = "카테고리를 눌러 빠른 답변을 받을 수 있어요.";
           } catch (e) {
             catStatusEl.textContent = "카테고리 로드 실패: " + (e.message || String(e));
           }
@@ -1176,6 +1178,8 @@
               }
             });
             es.addEventListener("followups", function (evt) {
+              // 참가 기업/제품(RAG) 모드에서는 follow-ups 이벤트를 무시한다.
+              if (currentMode === "rag") return;
               const items = parseSsePayloadData(evt.data);
               if (Array.isArray(items) && items.length) {
                 ensureBotBox();
@@ -1306,7 +1310,17 @@
               (mode === "exhibitor_faq" && u === "exhibitor");
             b.setAttribute("data-active", String(active));
           });
-          loadPrimaryCategories(currentFaqUser);
+          // 참가 기업/제품(RAG) 모드에서는 FAQ 하위 카테고리 칩을 숨겨 현재 모드를 분명히 한다.
+          if (mode === "rag") {
+            catChipsEl.innerHTML = "";
+            catChipsEl.style.display = "none";
+            catStatusEl.style.display = "none";
+            catStatusEl.textContent = "";
+          } else {
+            catChipsEl.style.display = "";
+            catStatusEl.style.display = "";
+            loadPrimaryCategories(currentFaqUser);
+          }
         }
 
         // mode overlay

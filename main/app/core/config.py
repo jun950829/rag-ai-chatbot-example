@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     retrieval_min_queries: int = 2
     retrieval_max_queries: int = 2
     retrieval_score_cutoff: float = 0.25
+    # 답변·LLM 컨텍스트용 추가 필터(0이면 비활성화, 기존 동작 유지). 예: 0.55
+    retrieval_user_answer_min_score: float = 0.0
     retrieval_evidence_ratio: float = 0.45
     retrieval_rrf_k: int = 60
     retrieval_context_limit: int = 4
