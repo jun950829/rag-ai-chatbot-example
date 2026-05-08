@@ -222,7 +222,11 @@ async def llm_consumer(redis: Redis) -> None:
             )
 
             suggestion_cards: list[Any] = []
-            if intent in {"company", "product", "follow_up"}:
+            # FAQ/general 질문도 메인 API FAQ 게이트에서 우선 답변할 수 있으므로 retrieval로 보낸다.
+            run_retrieval = intent in {"company", "product", "follow_up"} or (
+                intent == "general" and looks_like_general_faq(job["message"])
+            )
+            if run_retrieval:
                 await _trace(
                     redis,
                     request_id=request_id,
@@ -234,6 +238,9 @@ async def llm_consumer(redis: Redis) -> None:
                 answer = str(payload.get("answer_korean") or "검색 결과 기반 답변을 생성하지 못했습니다.")
                 raw_cards = payload.get("suggestion_cards")
                 suggestion_cards = raw_cards if isinstance(raw_cards, list) else []
+                followups = payload.get("follow_up_questions")
+                if isinstance(followups, list) and followups:
+                    await redis.rpush(stream_key, json.dumps({"event": "followups", "data": followups}, ensure_ascii=False))
                 logger.info(
                     "[worker] retrieval path done request_id=%s cards=%d",
                     request_id,

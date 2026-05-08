@@ -103,10 +103,26 @@ def normalize_user_query(query: str) -> str:
 
 
 def detect_language(query: str) -> str:
+    """질문 언어를 ko/en으로 판정한다.
+
+    - 한글·라틴 문자만 비율 분모로 쓴다(숫자·공백·기호 제외). 한글 비중이 **10% 이상이면 항상 ko**.
+      → 본문은 한글인데 제품명·브랜드만 영문이 긴 경우에도 ``*_kor``·한국어 답변 유지.
+    - 한글 비중이 10% 미만이고 라틴이 있으면 en, 문자가 없거나 한글만 있으면 ko.
+    """
+
     text = (query or "").strip()
-    kor_count = len(_KOREAN_RE.findall(text))
-    eng_count = len(_ENGLISH_RE.findall(text))
-    return "ko" if kor_count >= eng_count else "en"
+    chars = [c for c in text if not c.isspace()]
+    if not chars:
+        return "ko"
+
+    kor_count = sum(1 for c in chars if "\uac00" <= c <= "\ud7a3")
+    eng_count = sum(1 for c in chars if ("A" <= c <= "Z") or ("a" <= c <= "z"))
+    denom = kor_count + eng_count
+    if denom <= 0:
+        return "ko"
+    if (kor_count / denom) >= 0.10:
+        return "ko"
+    return "en" if eng_count > 0 else "ko"
 
 
 def _strip_request_scaffolding(raw: str) -> str:

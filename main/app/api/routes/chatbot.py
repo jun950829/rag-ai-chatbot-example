@@ -117,11 +117,20 @@ async def stream_chat(request_id: str) -> StreamingResponse:
 
     async def event_generator() -> AsyncIterator[str]:
         try:
-            for _ in range(600):
+            # 기존 구현은 600 * 0.05s ≒ 30초 동안만 폴링 후 done을 내려
+            # 답변 생성/스트리밍이 길어지면 사용자 화면에서 "중간에 끊기는" 현상이 발생할 수 있다.
+            # 이벤트가 실제로 흘러오는 동안에는 계속 기다리고, "아무 이벤트도 없는 idle"이 길 때만 종료한다.
+            empty_polls = 0
+            max_empty_polls = 12000  # 12000 * 0.05s = 600s (10분) idle 타임아웃
+            while True:
                 raw = await redis.lpop(stream_key)
                 if not raw:
+                    empty_polls += 1
+                    if empty_polls >= max_empty_polls:
+                        break
                     await asyncio.sleep(0.05)
                     continue
+                empty_polls = 0
                 payload = json.loads(raw)
                 event = payload.get("event", "message")
                 data = payload.get("data", "")

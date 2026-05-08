@@ -25,6 +25,10 @@ def classify_intent_heuristic(message: str, *, previous_intent: str | None = Non
     if not text:
         return "not_related"
 
+    # "주식회사"는 법인 표기이므로 "주식(stock)" 오탐을 방지한다.
+    # 예: "혜윰컴퍼니주식회사" 같은 업체명은 not_related(주식)로 떨어지면 안 된다.
+    safe_text = text.replace("주식회사", "")
+
     greeting_words = ("안녕", "안녕하세요", "hello", "hi", "hey")
     followup_starts = ("그럼", "그리고", "그 회사", "그 업체", "then", "also", "what about")
     not_related_words = ("날씨", "주식", "환율", "운세", "점심", "movie", "recipe")
@@ -38,7 +42,8 @@ def classify_intent_heuristic(message: str, *, previous_intent: str | None = Non
         return "follow_up"
     if text.startswith(followup_starts):
         return "follow_up"
-    if any(w in text for w in not_related_words):
+    # not_related는 키워드 오탐이 치명적이므로(검색 경로를 막음) 법인 표기 등을 제거한 텍스트로 판정한다.
+    if any(w in safe_text for w in not_related_words):
         return "not_related"
     if any(w in text for w in product_words):
         return "product"

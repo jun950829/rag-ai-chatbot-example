@@ -57,8 +57,9 @@ class WorkerSettings(BaseSettings):
 
     # 챗봇 → API 검색 시 Form으로 전달 — False면 검색축 모호 시 OpenAI 재분류(7단계)가 아예 타지 않음
     retrieval_intent_use_openai: bool = True
-    retrieval_min_queries: int = 4
-    retrieval_max_queries: int = 4
+    # 속도 최적화: 다중 쿼리를 2개로 축소
+    retrieval_min_queries: int = 2
+    retrieval_max_queries: int = 2
     retrieval_score_cutoff: float = 0.25
     retrieval_evidence_ratio: float = 0.45
     retrieval_rrf_k: int = 60

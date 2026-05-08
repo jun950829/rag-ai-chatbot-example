@@ -133,11 +133,19 @@
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow);
       }
-
       .faq-tabs {
         display: flex;
         gap: 8px;
         margin-bottom: 10px;
+        align-items: center;
+      }
+      .faq-tabs-left {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .faq-tabs-spacer {
+        flex: 1;
       }
 
       button.tab-pill {
@@ -467,25 +475,116 @@
           transform: translateY(-4px);
         }
       }
+
+      /* mode chooser */
+      .mode-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 22px 16px;
+        background: rgba(0, 0, 0, 0.58);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      .mode-card {
+        width: 100%;
+        max-width: 420px;
+        border-radius: 22px;
+        border: 1px solid var(--border);
+        background: rgba(20, 25, 34, 0.92);
+        box-shadow: var(--shadow);
+        padding: 18px;
+        text-align: center;
+      }
+      .mode-orb {
+        width: 86px;
+        height: 86px;
+        border-radius: 999px;
+        margin: 10px auto 14px;
+        background: radial-gradient(circle at 30% 30%, rgba(63, 216, 194, 0.55), rgba(49, 182, 162, 0.18) 55%, rgba(49, 182, 162, 0.04) 70%, transparent 72%);
+        box-shadow: 0 18px 60px rgba(49, 182, 162, 0.20);
+      }
+      .mode-title {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .mode-sub {
+        margin: 8px 0 14px;
+        font-size: 12px;
+        color: var(--text-muted);
+        font-weight: 500;
+        line-height: 1.5;
+      }
+      .mode-btns {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      button.mode-btn {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 11px 14px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.12s, border-color 0.15s, background 0.15s;
+        min-width: 128px;
+      }
+      button.mode-btn:hover {
+        transform: translateY(-1px);
+        border-color: rgba(49, 182, 162, 0.55);
+        background: rgba(49, 182, 162, 0.10);
+      }
+      button.mode-btn.primary {
+        border-color: rgba(49, 182, 162, 0.55);
+        background: rgba(49, 182, 162, 0.14);
+        color: var(--accent);
+      }
+
+      /* (removed) in-header mode switch row */
     </style>
   </head>
   <body>
     <div class="page-bg" aria-hidden="true"></div>
+    <div id="mode-overlay" class="mode-overlay" role="dialog" aria-modal="true">
+      <div class="mode-card">
+        <div class="mode-orb" aria-hidden="true"></div>
+        <p class="mode-title">KIMES AI 전시 도우미</p>
+        <p class="mode-sub">원하시는 모드를 먼저 선택해 주세요. FAQ 모드는 <strong>DB 기반 안내</strong>로만 답변합니다.</p>
+        <div class="mode-btns">
+          <button type="button" class="mode-btn primary" data-mode="visitor_faq">참관객 FAQ</button>
+          <button type="button" class="mode-btn primary" data-mode="exhibitor_faq">참가업체 FAQ</button>
+          <button type="button" class="mode-btn" data-mode="rag">참가기업/제품 정보</button>
+        </div>
+      </div>
+    </div>
     <div class="shell">
       <header id="kimes-header" class="top-bar">
         <div class="top-bar-inner">
           <div class="brand">
             <div class="brand-mark" aria-hidden="true">K</div>
             <div class="brand-text">
-              <h1>KIMES 챗봇</h1>
+              <h1 id="mode-title">KIMES 챗봇</h1>
               <p>전시 정보 · 참가기업 · 제품 문의를 도와드립니다</p>
             </div>
           </div>
 
-          <div class="faq-panel">
+          <div id="faq-panel" class="faq-panel">
             <div class="faq-tabs">
-              <button type="button" class="tab-pill" data-user="visitor" data-active="true">참관객 FAQ</button>
-              <button type="button" class="tab-pill" data-user="exhibitor">참가업체 FAQ</button>
+              <div class="faq-tabs-left">
+                <button type="button" class="tab-pill" data-user="visitor" data-active="true">참관객 FAQ</button>
+                <button type="button" class="tab-pill" data-user="exhibitor">참가업체 FAQ</button>
+              </div>
+              <div class="faq-tabs-spacer"></div>
+              <button type="button" class="tab-pill" data-user="rag" data-active="false">참가 기업/제품 정보</button>
             </div>
             <div id="cat-chips"></div>
             <div id="cat-status" class="cat-status">카테고리 로딩 중...</div>
@@ -521,11 +620,14 @@
         const sendBtn = document.getElementById("send-btn");
         const headerEl = document.getElementById("kimes-header");
         const composerEl = document.getElementById("kimes-composer");
+        const modeOverlayEl = document.getElementById("mode-overlay");
+        const modeTitleEl = document.getElementById("mode-title");
         const catChipsEl = document.getElementById("cat-chips");
         const catStatusEl = document.getElementById("cat-status");
         const catBtns = Array.from(document.querySelectorAll(".tab-pill"));
         const sessionId = "kimes-" + Math.random().toString(36).slice(2, 12);
         let currentFaqUser = "visitor";
+        let currentMode = "rag"; // visitor_faq | exhibitor_faq | rag
 
         function _setLayoutVars() {
           const hh = headerEl ? headerEl.getBoundingClientRect().height : 0;
@@ -705,13 +807,39 @@
             st.textContent = c.subtitle || "";
             body.appendChild(t);
             body.appendChild(st);
+            // 프로필 요약(내부 id/key 노출 금지)
+            const items = Array.isArray(c.profile_items) ? c.profile_items : [];
+            if (items.length) {
+              const ul = document.createElement("div");
+              ul.className = "suggestion-sub";
+              const lines = items
+                .map((it) => {
+                  const lab = String((it && it.label) || "").trim();
+                  const val = String((it && it.value) || "").trim();
+                  if (!lab || !val) return "";
+                  return lab + ": " + val;
+                })
+                .filter(Boolean)
+                .slice(0, 6);
+              // 너무 길면 2줄로 끊어 가독성 유지
+              const first = lines.slice(0, 3).join(" · ");
+              const second = lines.slice(3).join(" · ");
+              ul.textContent = second ? first + "\n" + second : first;
+              ul.style.whiteSpace = "pre-line";
+              body.appendChild(ul);
+            }
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "suggestion-detail-btn";
             btn.textContent = "자세히 보기";
             function cardAskDetail() {
-              const payload = follow || String(c.title || "") + "에 대해 자세히 알려줘";
-              const display = stripExternalIdForDisplay(payload) || String(c.title || "").trim() || "자세히 알려줘";
+              const entityType = kind === "exhibit_item" ? "product" : "company";
+              const ext = String(c.external_id || "").trim();
+              const query = String(c.title || "").trim() ? String(c.title || "").trim() + "에 대한 정보를 알려줘" : "자세히 알려줘";
+              // 서버는 JSON payload를 인식해 entity 우선 조회를 수행한다. 화면에는 query만 보여준다.
+              const payloadObj = { query, entity_type: entityType, external_id: ext };
+              const payload = JSON.stringify(payloadObj);
+              const display = query;
               void runQueuedChat(payload, display);
             }
             btn.addEventListener("click", function (ev) {
@@ -730,6 +858,34 @@
           });
           wrap.appendChild(track);
           botBox.appendChild(wrap);
+        }
+
+        function renderFollowupButtons(botBox, items) {
+          // 참가 기업/제품(RAG) 모드에서는 follow-up 버튼을 노출하지 않는다.
+          if (currentMode === "rag") return;
+          if (!botBox || !Array.isArray(items) || !items.length) return;
+          if (botBox.querySelector(".faq-follow-wrap")) return; // 1회만
+          const wrap = document.createElement("div");
+          wrap.className = "faq-follow-wrap";
+          items.slice(0, 4).forEach((it) => {
+            const label = String((it && (it.label || it.ask || it.text)) || "").trim();
+            const ask = String((it && (it.ask || it.text || it.label)) || "").trim();
+            if (!label || !ask) return;
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "faq-follow-btn";
+            b.textContent = label;
+            b.addEventListener("click", function () {
+              const payload = ask;
+              const display = stripExternalIdForDisplay(payload) || payload;
+              void runQueuedChat(payload, display);
+            });
+            wrap.appendChild(b);
+          });
+          if (wrap.children.length) {
+            botBox.appendChild(wrap);
+            scheduleStickyScroll();
+          }
         }
 
         async function getJson(url) {
@@ -756,9 +912,6 @@
           currentFaqUser = userType;
           catStatusEl.textContent = "카테고리 로딩 중...";
           catChipsEl.innerHTML = "";
-          catBtns.forEach((b) => {
-            b.setAttribute("data-active", String((b.getAttribute("data-user") || "") === userType));
-          });
           try {
             const data = await getJson("/tools/embedding/api/qa-quickmenu/primary?qa_user=" + encodeURIComponent(userType));
             const items = data.items || [];
@@ -1024,6 +1177,15 @@
                 scheduleStickyScroll();
               }
             });
+            es.addEventListener("followups", function (evt) {
+              // 참가 기업/제품(RAG) 모드에서는 follow-ups 이벤트를 무시한다.
+              if (currentMode === "rag") return;
+              const items = parseSsePayloadData(evt.data);
+              if (Array.isArray(items) && items.length) {
+                ensureBotBox();
+                renderFollowupButtons(botBox, items);
+              }
+            });
             es.addEventListener("done", function () {
               doneReceived = true;
               es.close();
@@ -1059,6 +1221,25 @@
           });
         }
 
+        async function faqOnlyAnswer(message) {
+          const fd = new FormData();
+          fd.append("query", message);
+          fd.append("model_id", "Qwen/Qwen3-Embedding-0.6B");
+          fd.append("device", "cpu");
+          fd.append("top_k", "8");
+          fd.append("chunk_type", "all");
+          fd.append("answer_mode", "template");
+          fd.append("intent_use_openai", "false");
+          fd.append("faq_only", "true");
+          fd.append("faq_user", currentMode === "exhibitor_faq" ? "exhibitor" : "visitor");
+          const res = await fetch("/tools/embedding/api/search", { method: "POST", body: fd });
+          const payload = await res.json();
+          if (!res.ok) {
+            throw new Error(typeof payload.detail === "string" ? payload.detail : "FAQ 요청 실패");
+          }
+          return payload;
+        }
+
         async function runQueuedChat(fullMessage, displayMessage) {
           const text = String(fullMessage || "").trim();
           if (!text) return;
@@ -1074,10 +1255,23 @@
           forceScrollToBottom();
 
           try {
-            const requestId = await enqueueChat(text);
-            statusEl.textContent = "응답을 기다리는 중...";
-            await streamAnswer(requestId, chatLoad, { displayText: display || stripExternalIdForDisplay(text) });
-            statusEl.textContent = "완료";
+            if (currentMode === "visitor_faq" || currentMode === "exhibitor_faq") {
+              statusEl.textContent = "FAQ 답변을 찾는 중...";
+              const payload = await faqOnlyAnswer(text);
+              chatLoad.stopAndRemove();
+              const ans = String(payload.answer || payload.answer_korean || "").trim() || "등록된 FAQ 답변을 찾지 못했습니다.";
+              const botBox = addMessage("bot", ans);
+              const followups = payload.follow_up_questions;
+              if (Array.isArray(followups) && followups.length) {
+                renderFollowupButtons(botBox, followups);
+              }
+              statusEl.textContent = "완료";
+            } else {
+              const requestId = await enqueueChat(text);
+              statusEl.textContent = "응답을 기다리는 중...";
+              await streamAnswer(requestId, chatLoad, { displayText: display || stripExternalIdForDisplay(text) });
+              statusEl.textContent = "완료";
+            }
           } catch (err) {
             chatLoad.stopAndRemove();
             addMessage("bot", "오류: " + (err.message || String(err)));
@@ -1090,7 +1284,51 @@
 
         catBtns.forEach((btn) => {
           btn.addEventListener("click", () => {
-            loadPrimaryCategories(btn.getAttribute("data-user") || "visitor");
+            const u = String(btn.getAttribute("data-user") || "visitor");
+            if (modeOverlayEl) modeOverlayEl.style.display = "none";
+            if (u === "rag") {
+              setMode("rag");
+              return;
+            }
+            setMode(u === "exhibitor" ? "exhibitor_faq" : "visitor_faq");
+          });
+        });
+
+        function setMode(mode) {
+          currentMode = mode;
+          if (mode === "visitor_faq") currentFaqUser = "visitor";
+          if (mode === "exhibitor_faq") currentFaqUser = "exhibitor";
+          if (modeTitleEl) {
+            modeTitleEl.textContent =
+              mode === "visitor_faq" ? "참관객 FAQ 모드" : mode === "exhibitor_faq" ? "참가업체 FAQ 모드" : "참가기업/제품 검색 모드";
+          }
+          catBtns.forEach((b) => {
+            const u = String(b.getAttribute("data-user") || "");
+            const active =
+              (mode === "rag" && u === "rag") ||
+              (mode === "visitor_faq" && u === "visitor") ||
+              (mode === "exhibitor_faq" && u === "exhibitor");
+            b.setAttribute("data-active", String(active));
+          });
+          // 참가 기업/제품(RAG) 모드에서는 FAQ 하위 카테고리 칩을 숨겨 현재 모드를 분명히 한다.
+          if (mode === "rag") {
+            catChipsEl.innerHTML = "";
+            catChipsEl.style.display = "none";
+            catStatusEl.style.display = "none";
+            catStatusEl.textContent = "";
+          } else {
+            catChipsEl.style.display = "";
+            catStatusEl.style.display = "";
+            loadPrimaryCategories(currentFaqUser);
+          }
+        }
+
+        // mode overlay
+        Array.from(document.querySelectorAll("button.mode-btn")).forEach((b) => {
+          b.addEventListener("click", () => {
+            const mode = String(b.getAttribute("data-mode") || "rag");
+            if (modeOverlayEl) modeOverlayEl.style.display = "none";
+            setMode(mode);
           });
         });
 
@@ -1103,9 +1341,9 @@
 
         addMessage(
           "bot",
-          "안녕하세요. KIMES 챗봇입니다. 위 FAQ 주제를 선택하시거나, 궁금하신 내용을 아래에 입력해 주세요."
+          "안녕하세요. KIMES 챗봇입니다. 모드를 선택하면 해당 방식으로 질문을 처리합니다."
         );
-        loadPrimaryCategories(currentFaqUser);
+        // 첫 진입은 오버레이에서 모드 선택
       })();
     </script>
   </body>

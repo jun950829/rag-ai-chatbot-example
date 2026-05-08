@@ -92,9 +92,12 @@ class Settings(BaseSettings):
 
     # --- RAG 검색 부하·의도 OpenAI (API 폼 미전달 시 기본값) ---
     retrieval_intent_use_openai: bool = True
-    retrieval_min_queries: int = 4
-    retrieval_max_queries: int = 4
+    # 속도 최적화: 기본 다중 쿼리 2개
+    retrieval_min_queries: int = 2
+    retrieval_max_queries: int = 2
     retrieval_score_cutoff: float = 0.25
+    # 답변·LLM 컨텍스트용 추가 필터(0이면 비활성화, 기존 동작 유지). 예: 0.55
+    retrieval_user_answer_min_score: float = 0.0
     retrieval_evidence_ratio: float = 0.45
     retrieval_rrf_k: int = 60
     retrieval_context_limit: int = 4

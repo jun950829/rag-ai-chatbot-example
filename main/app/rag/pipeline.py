@@ -16,8 +16,10 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
+import logging
 import os
 import sys
 import uuid
@@ -30,6 +32,8 @@ from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
 import sqlalchemy as sa
+
+logger = logging.getLogger(__name__)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # app/rag/pipeline.py -> repo root is two levels above this file
@@ -932,6 +936,202 @@ def search_embedding_tables(
     return [dict(r) for r in rows]
 
 
+# --- 사용자 응답·LLM 컨텍스트 전용: 검색 row 정리(플레이스홀더 제거·저품질 제외). 내부 사유는 로그만. ---
+_RAG_USER_PLACEHOLDER_LOWER = frozenset(
+    {"", ".", "-", "null", "none", "n/a", "na", "undefined", "…", "...", "[empty]"}
+)
+# 임베딩/품질 파이프라인에서 섞인 디버그 문구(부분 일치 시 본문 신뢰 하지 않음)
+_RAG_USER_DEBUG_SUBSTRINGS = (
+    "insufficient detail to rank",
+    "insufficient detail",
+    "not enough information",
+    "only entry with full",
+    "only entry with",
+    "reference entry",
+)
+
+
+def _rag_user_row_effective_score(row: dict[str, Any]) -> float:
+    try:
+        return float(row.get("best_score", row.get("score", 0.0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _rag_scalar_clean_for_user(v: Any) -> str | None:
+    """플레이스홀더·디버그 문구가 섞인 문자열은 None으로 본다."""
+
+    if v is None:
+        return None
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        s = str(v).strip()
+        return s or None
+    s = str(v).replace("\u0000", "").strip()
+    if not s:
+        return None
+    low = s.lower()
+    if low in _RAG_USER_PLACEHOLDER_LOWER:
+        return None
+    for ph in _RAG_USER_DEBUG_SUBSTRINGS:
+        if ph in low:
+            return None
+    return s
+
+
+def _sanitize_entity_detail_dict(d: dict[str, Any]) -> dict[str, Any]:
+    """entity_detail에서 플레이스홀더 값 제거(키는 유지해도 되나 None/빈은 pop)."""
+
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        if k == "major_products" and isinstance(v, list):
+            cleaned = [_rag_scalar_clean_for_user(x) for x in v]
+            lst = [x for x in cleaned if x]
+            if lst:
+                out[k] = lst
+            continue
+        if isinstance(v, dict):
+            nested = _sanitize_entity_detail_dict(v)
+            if nested:
+                out[k] = nested
+            continue
+        cv = _rag_scalar_clean_for_user(v)
+        if cv is not None:
+            out[k] = cv
+    return out
+
+
+def _entity_detail_substance_chars(d: dict[str, Any]) -> int:
+    """답변에 쓸 만한 텍스트 양(대략적)."""
+
+    et = str(d.get("entity_type") or "").strip().lower()
+    if et not in ("product", "company"):
+        et = "product" if (d.get("product_name") or "").strip() else "company"
+
+    prod_keys = (
+        "product_name",
+        "description",
+        "one_liner",
+        "manufacturer",
+        "model_name",
+        "category",
+        "features",
+        "location",
+        "company_name",
+        "contact",
+        "website",
+    )
+    co_keys = (
+        "company_name",
+        "description",
+        "one_liner",
+        "hall",
+        "booth",
+        "category",
+        "contact",
+        "website",
+        "address",
+    )
+    keys = prod_keys if et == "product" else co_keys
+    n = 0
+    for k in keys:
+        v = d.get(k)
+        if isinstance(v, str) and v.strip():
+            n += len(v.strip())
+    mp = d.get("major_products")
+    if isinstance(mp, list):
+        for x in mp:
+            if isinstance(x, str) and x.strip():
+                n += len(x.strip())
+    return n
+
+
+def _row_has_user_substance_after_clean(content: str | None, ed: dict[str, Any] | None) -> bool:
+    c = (content or "").strip()
+    c_eff = len(c) >= 12
+    if not ed:
+        return c_eff
+    name_ok = False
+    et = str(ed.get("entity_type") or "").strip().lower()
+    if et == "product":
+        pn = ed.get("product_name")
+        name_ok = isinstance(pn, str) and len(pn.strip()) >= 2
+    else:
+        cn = ed.get("company_name")
+        name_ok = isinstance(cn, str) and len(cn.strip()) >= 2
+    sub = _entity_detail_substance_chars(ed)
+    return sub >= 8 or (name_ok and sub >= 2) or c_eff
+
+
+def sanitize_rag_results_for_user(
+    results: list[dict[str, Any]] | None,
+    *,
+    min_best_score: float = 0.0,
+) -> list[dict[str, Any]]:
+    """벡터 검색·직접 조회 결과를 사용자 답변/LLM 컨텍스트용으로 정리한다.
+
+    - 점수 하한선(설정 가능, 0이면 비활성화)
+    - ``.``/``-``/``null`` 등 플레이스홀더 필드 제거
+    - 실질 정보가 거의 없는 row 제외
+    - 스키마·키 구조는 유지(행 단위로만 드랍 또는 필드 정리)
+
+    저품질로 제외된 사유는 ``logger.warning`` 으로만 남긴다.
+    """
+
+    out: list[dict[str, Any]] = []
+    floor = float(min_best_score or 0.0)
+    for r in results or []:
+        row = dict(r)
+        ext = str(row.get("external_id") or "").strip()
+        eff_sc = _rag_user_row_effective_score(row)
+        if floor > 0 and eff_sc < floor:
+            logger.warning(
+                "RAG 사용자 응답용 row 제외: score_below_threshold external_id=%s effective_score=%s floor=%s",
+                ext or "-",
+                eff_sc,
+                floor,
+            )
+            continue
+
+        raw_content = row.get("content")
+        content_s = raw_content if isinstance(raw_content, str) else (str(raw_content) if raw_content is not None else "")
+        cl = content_s.strip().lower()
+        if any(p in cl for p in _RAG_USER_DEBUG_SUBSTRINGS):
+            logger.warning(
+                "RAG 사용자 응답용 row 제외: debug_phrase_in_content external_id=%s",
+                ext or "-",
+            )
+            continue
+
+        ed_in = row.get("entity_detail")
+        ed_clean: dict[str, Any] | None = None
+        if isinstance(ed_in, dict):
+            ed_clean = _sanitize_entity_detail_dict(ed_in)
+
+        content_clean = _rag_scalar_clean_for_user(content_s)
+        row["content"] = content_clean if content_clean is not None else ""
+
+        if isinstance(ed_in, dict):
+            row["entity_detail"] = ed_clean if ed_clean else None
+            if not ed_clean:
+                logger.warning(
+                    "RAG 사용자 응답용 entity_detail 플레이스홀더만 남음 — 본문·점수 기준 검사 진행 external_id=%s",
+                    ext or "-",
+                )
+
+        if not _row_has_user_substance_after_clean(row.get("content"), row.get("entity_detail") if isinstance(row.get("entity_detail"), dict) else None):
+            logger.warning(
+                "RAG 사용자 응답용 row 제외: insufficient_substance external_id=%s effective_score=%s",
+                ext or "-",
+                eff_sc,
+            )
+            continue
+
+        out.append(row)
+
+    logger.info("[rag_sanitize] in=%s out=%s min_best_score=%s", len(results or []), len(out), floor)
+    return out
+
+
 def split_search_results_profile_evidence(
     results: list[dict[str, Any]],
     *,
@@ -963,59 +1163,295 @@ def split_search_results_profile_evidence(
     return profiles, evidence
 
 
-def format_search_results_for_llm_context(results: list[dict[str, Any]]) -> str:
-    """OpenAI 등 답변 생성용: 프로필은 항목별 블록, evidence는 한 줄 요약 (의도/점수 메타 없음)."""
-    profiles, evidence = split_search_results_profile_evidence(results)
+def _row_entity_kind_for_answer(r: dict[str, Any]) -> str:
+    """검색 결과 한 행이 나타내는 엔티티 축(업체 vs 제품)."""
+
+    d = r.get("entity_detail")
+    if isinstance(d, dict):
+        et = str(d.get("entity_type") or "").strip().lower()
+        if et in ("company", "product"):
+            return et
+    et2 = str(r.get("entity_type") or "").strip().lower()
+    if et2 in ("company", "product"):
+        return et2
+    tn = str(r.get("table_name") or "").lower()
+    if "exhibit_item" in tn or "exhibititem" in tn:
+        return "product"
+    return "company"
+
+
+def infer_answer_focus(
+    *,
+    intent: str,
+    retrieval_topic: str | None,
+    results: list[dict[str, Any]],
+) -> str:
+    """답변·LLM 컨텍스트를 한 축(업체 또는 제품)으로 맞출 때 사용."""
+
+    rt = (retrieval_topic or "").strip().lower()
+    if rt in ("company", "product"):
+        return rt
+    it = (intent or "").strip().lower()
+    if it == "company":
+        return "company"
+    if it == "product":
+        return "product"
+    kinds = [_row_entity_kind_for_answer(r) for r in (results or [])]
+    products = sum(1 for k in kinds if k == "product")
+    companies = sum(1 for k in kinds if k == "company")
+    if products and not companies:
+        return "product"
+    if companies and not products:
+        return "company"
+    for r in results or []:
+        if (r.get("chunk_typ") == "profile") or isinstance(r.get("entity_detail"), dict):
+            return _row_entity_kind_for_answer(r)
+    return "company"
+
+
+def filter_results_by_answer_focus(results: list[dict[str, Any]], focus: str) -> list[dict[str, Any]]:
+    """의도와 맞는 행만 남긴다(업체 답변에 제품 청크가 섞이지 않게)."""
+
+    f = (focus or "").strip().lower()
+    if f not in ("company", "product"):
+        return list(results or [])
+    filtered = [r for r in (results or []) if _row_entity_kind_for_answer(r) == f]
+    return filtered if filtered else list(results or [])
+
+
+def format_search_results_for_llm_context(
+    results: list[dict[str, Any]],
+    *,
+    intent: str = "general",
+    retrieval_topic: str | None = None,
+    language: str = "ko",
+) -> str:
+    """OpenAI 등 답변 생성용 컨텍스트 포맷터.
+
+    정책:
+    - raw chunk 나열 대신, 가능하면 entity_detail 기반 구조화 요약을 우선 포함
+    - internal id/metadata/컬럼명/점수는 절대 넣지 않는다.
+    - 한 응답에는 업체 또는 제품 중 한 축만 담는다(의도·검색축·결과 다수결이 일치하도록 필터).
+    """
+    focus = infer_answer_focus(intent=intent, retrieval_topic=retrieval_topic, results=results)
+    scoped = filter_results_by_answer_focus(results, focus)
+    profiles, evidence = split_search_results_profile_evidence(scoped)
     blocks: list[str] = []
+    lang = (language or "ko").strip().lower()
+    _is_en = lang == "en"
 
     if profiles:
-        blocks.append("【프로필】 (전시 참가사·전시품 요약)")
-        for i, r in enumerate(profiles, start=1):
-            ext = (r.get("external_id") or "").strip() or "(식별자 없음)"
-            sf = (r.get("source_field") or "").strip()
-            body = (r.get("content") or "").strip()
-            if len(body) > 1200:
-                body = body[:1200].rstrip() + "…"
-            head = f"— 항목 {i} · {ext}"
-            if sf:
-                head += f" · 출처 필드: {sf}"
-            blocks.append(head + "\n" + body)
+        if lang == "en":
+            kind_en = "Exhibitor" if focus == "company" else "Product"
+            blocks.append(f"【Entity summary】 ({kind_en} core fields)")
+        else:
+            kind_ko = "업체" if focus == "company" else "제품"
+            blocks.append(f"【엔티티 요약】 ({kind_ko} 핵심 정보)")
+        for r in profiles:
+            d = r.get("entity_detail") if isinstance(r.get("entity_detail"), dict) else None
+            if d:
+                if d.get("entity_type") == "company":
+                    intro = (d.get("description") or d.get("one_liner") or "").strip()
+                    cn = (d.get("company_name") or "").strip()
+                    hdr = f"— {cn}" if cn else ("— Exhibitor" if _is_en else "— 참가 업체")
+                    loc = " ".join(
+                        [x for x in [(d.get("hall") or "").strip(), (d.get("booth") or "").strip()] if x]
+                    )
+                    cat = (d.get("category") or "").strip()
+                    addr = (d.get("address") or "").strip()
+                    contact = (d.get("contact") or "").strip()
+                    web = (d.get("website") or "").strip()
+                    majors = d.get("major_products")
+                    mp = ""
+                    if isinstance(majors, list):
+                        mp = ", ".join(str(x).strip() for x in majors if str(x).strip())
+                    sec: list[str] = [hdr]
+                    if intro:
+                        sec.append(("Company overview:" if _is_en else "업체 소개:") + "\n" + intro)
+                    bits: list[str] = []
+                    if loc:
+                        bits.append(f"Location: {loc}" if _is_en else f"위치: {loc}")
+                    if cat:
+                        bits.append(f"Category: {cat}" if _is_en else f"카테고리: {cat}")
+                    if addr:
+                        bits.append(f"Address: {addr}" if _is_en else f"주소: {addr}")
+                    if contact:
+                        bits.append(f"Contact: {contact}" if _is_en else f"연락처: {contact}")
+                    if web:
+                        bits.append(f"Website: {web}" if _is_en else f"웹사이트: {web}")
+                    if mp:
+                        bits.append(f"Key products/services: {mp}" if _is_en else f"주요 제품/서비스: {mp}")
+                    if bits:
+                        sec.append("\n".join(f"· {b}" for b in bits))
+                    blocks.append("\n".join(sec))
+                else:
+                    intro = (d.get("description") or d.get("one_liner") or "").strip()
+                    pn = (d.get("product_name") or "").strip()
+                    hdr = f"— {pn}" if pn else ("— Exhibit item" if _is_en else "— 전시 품목")
+                    manu = (d.get("manufacturer") or "").strip()
+                    model = (d.get("model_name") or "").strip()
+                    cat = (d.get("category") or "").strip()
+                    loc = (d.get("location") or "").strip()
+                    sec2: list[str] = [hdr]
+                    if intro:
+                        sec2.append(("Product overview:" if _is_en else "제품 소개:") + "\n" + intro)
+                    bits2: list[str] = []
+                    if manu:
+                        bits2.append(f"Manufacturer: {manu}" if _is_en else f"제조사: {manu}")
+                    if model:
+                        bits2.append(f"Model: {model}" if _is_en else f"모델: {model}")
+                    if cat:
+                        bits2.append(f"Category: {cat}" if _is_en else f"카테고리: {cat}")
+                    if loc:
+                        bits2.append(f"Show location: {loc}" if _is_en else f"전시 위치: {loc}")
+                    if bits2:
+                        sec2.append("\n".join(f"· {b}" for b in bits2))
+                    blocks.append("\n".join(sec2))
+            else:
+                body = (r.get("content") or "").strip()
+                if len(body) > 600:
+                    body = body[:600].rstrip() + "…"
+                if body:
+                    blocks.append(
+                        (f"— Details\n{body}") if _is_en else (f"— 안내 내용\n{body}")
+                    )
 
     if evidence:
-        blocks.append("\n【추가 근거】 (상세·증빙 텍스트 요약, 한 줄씩)")
-        for i, r in enumerate(evidence, start=1):
-            ext = (r.get("external_id") or "").strip() or "-"
-            sf = (r.get("source_field") or "").strip() or "-"
-            typ = (r.get("chunk_typ") or "").strip() or "-"
+        blocks.append(
+            "\n【Related excerpts】"
+            if _is_en
+            else "\n【관련 세부 문구】"
+        )
+        for r in evidence:
             c = (r.get("content") or "").strip().replace("\n", " ")
+            if not c:
+                continue
             if len(c) > 300:
                 c = c[:300].rstrip() + "…"
-            blocks.append(f"· [{i}] 유형={typ}, 식별자={ext}, 필드={sf}\n  {c}")
+            blocks.append(f"· {c}")
 
     out = "\n".join(blocks).strip()
-    return out or "(검색 결과 본문이 비어 있습니다.)"
+    return out or ("(Search context is empty.)" if _is_en else "(검색 결과 본문이 비어 있습니다.)")
 
 
-def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str:
-    """검색 결과를 채팅에 바로 넣기 좋은 한국어 안내 문구로 만든다 (템플릿/폴백용)."""
+def build_korean_search_answer(
+    query: str,
+    results: list[dict[str, Any]],
+    *,
+    intent: str = "general",
+    retrieval_topic: str | None = None,
+    language: str = "ko",
+) -> str:
+    """템플릿 모드에서도 “구조화된 카드형 설명”이 나오도록 답변을 생성한다.
+
+    정책:
+    - internal id/메타/컬럼명/점수/원시 JSON 노출 금지
+    - entity_detail이 있으면 그것을 우선 사용해 회사/제품 형식을 고정한다.
+    """
     q = (query or "").strip()
+    lang = (language or "ko").strip().lower()
+    _en = lang == "en"
     if not results:
-        return f"「{q}」에 맞는 정보를 찾지 못했습니다. 다른 표현으로 검색해 보시겠어요?"
+        return (
+            f"No matching information for 「{q}」. Try different keywords."
+            if _en
+            else f"「{q}」에 맞는 정보를 찾지 못했습니다. 다른 표현으로 검색해 보시겠어요?"
+        )
 
-    profiles, evidence = split_search_results_profile_evidence(results)
-    lines: list[str] = [
-        f"질문하신「{q}」과 가장 잘 맞는 저장 데이터를 아래처럼 정리했습니다.",
-        "",
-    ]
+    focus = infer_answer_focus(intent=intent, retrieval_topic=retrieval_topic, results=results)
+    scoped = filter_results_by_answer_focus(results, focus)
+    profiles, evidence = split_search_results_profile_evidence(scoped)
+    # 1) entity_detail 우선 (검색축과 같은 entity_type을 우선 선택)
+    best_detail = None
+    for r in profiles:
+        d = r.get("entity_detail")
+        if isinstance(d, dict) and str(d.get("entity_type") or "").strip().lower() == focus:
+            best_detail = d
+            break
+    if best_detail is None:
+        for r in profiles:
+            d = r.get("entity_detail")
+            if isinstance(d, dict) and d.get("entity_type"):
+                best_detail = d
+                break
+
+    if isinstance(best_detail, dict):
+        if best_detail.get("entity_type") == "company":
+            name = (best_detail.get("company_name") or "").strip() or ("Exhibitor" if _en else "참가 업체")
+            hall = (best_detail.get("hall") or "").strip()
+            booth = (best_detail.get("booth") or "").strip()
+            location = " ".join([x for x in [hall, booth] if x]).strip()
+            cat = (best_detail.get("category") or "").strip()
+            contact = (best_detail.get("contact") or "").strip()
+            web = (best_detail.get("website") or "").strip()
+            addr = (best_detail.get("address") or "").strip()
+            desc = (best_detail.get("description") or best_detail.get("one_liner") or "").strip()
+            majors = best_detail.get("major_products") if isinstance(best_detail.get("major_products"), list) else []
+            majors_txt = ", ".join([str(m).strip() for m in majors if str(m).strip()])[:160]
+            lines = [name]
+            if desc:
+                lines.extend(["", "[Company overview]" if _en else "[업체 소개]", desc])
+            bullets: list[str] = []
+            if location:
+                bullets.append(f"· Location: {location}" if _en else f"· 위치: {location}")
+            if cat:
+                bullets.append(f"· Category: {cat}" if _en else f"· 카테고리: {cat}")
+            if addr:
+                bullets.append(f"· Address: {addr}" if _en else f"· 주소: {addr}")
+            if contact:
+                bullets.append(f"· Contact: {contact}" if _en else f"· 연락처: {contact}")
+            if web:
+                bullets.append(f"· Website: {web}" if _en else f"· 웹사이트: {web}")
+            if majors_txt:
+                bullets.append(f"· Key products/services: {majors_txt}" if _en else f"· 주요 제품/서비스: {majors_txt}")
+            if bullets:
+                lines.append("")
+                lines.extend(bullets)
+            return "\n".join(lines).rstrip()
+
+        # product
+        name = (best_detail.get("product_name") or "").strip() or ("Exhibit item" if _en else "전시 품목")
+        desc = (best_detail.get("description") or best_detail.get("one_liner") or "").strip()
+        manu = (best_detail.get("manufacturer") or "").strip()
+        model = (best_detail.get("model_name") or "").strip()
+        cat = (best_detail.get("category") or "").strip()
+        loc = (best_detail.get("location") or "").strip()
+        cont = (best_detail.get("contact") or "").strip()
+        webp = (best_detail.get("website") or "").strip()
+        lines = [name]
+        if desc:
+            lines.extend(["", "[Product overview]" if _en else "[제품 소개]", desc])
+        bullets = []
+        if manu:
+            bullets.append(f"· Manufacturer: {manu}" if _en else f"· 제조사: {manu}")
+        if model:
+            bullets.append(f"· Model: {model}" if _en else f"· 모델: {model}")
+        if cat:
+            bullets.append(f"· Category: {cat}" if _en else f"· 카테고리: {cat}")
+        if loc:
+            bullets.append(f"· Show location: {loc}" if _en else f"· 전시 위치: {loc}")
+        if cont:
+            bullets.append(f"· Contact: {cont}" if _en else f"· 문의: {cont}")
+        if webp:
+            bullets.append(f"· Website: {webp}" if _en else f"· 웹사이트: {webp}")
+        if bullets:
+            lines.append("")
+            lines.extend(bullets)
+        return "\n".join(lines).rstrip()
+
+    # 2) fallback: 기존 요약(하지만 메타는 제거된 상태)
+    lines = (
+        [f"Here are details that may match your question about 「{q}」.", ""]
+        if _en
+        else [f"「{q}」와 관련해 안내할 수 있는 내용을 아래에 정리했습니다.", ""]
+    )
 
     if profiles:
-        lines.append("■ 관련 프로필")
+        lines.append("■ Overview" if _en else "■ 개요")
         for r in profiles:
-            ext = (r.get("external_id") or "").strip() or "식별자 없음"
             body = (r.get("content") or "").strip()
             if not body:
                 continue
-            lines.append(f"  · {ext}")
             for part in body.split("\n"):
                 part = part.strip()
                 if part:
@@ -1023,20 +1459,27 @@ def build_korean_search_answer(query: str, results: list[dict[str, Any]]) -> str
         lines.append("")
 
     if evidence:
-        lines.append("■ 추가로 참고한 내용 (요약)")
+        lines.append("■ Related excerpts" if _en else "■ 관련 세부 문구")
         for r in evidence[:6]:
-            ext = (r.get("external_id") or "").strip() or "-"
-            sf = (r.get("source_field") or "").strip()
             c = (r.get("content") or "").strip().replace("\n", " ")
+            if not c:
+                continue
             if len(c) > 200:
                 c = c[:200].rstrip() + "…"
-            tail = f" ({sf})" if sf else ""
-            lines.append(f"  · {ext}{tail}: {c}")
+            lines.append(f"  · {c}")
         lines.append("")
 
-    lines.append("위 내용만 근거로 답변했습니다. 더 구체적인 업체명·제품명이 있으면 알려 주세요.")
+    lines.append(
+        "Need a different name or keyword? Try again with a more specific exhibitor or product."
+        if _en
+        else "다른 업체명·제품명으로 검색해 보시면 더 잘 맞는 안내를 드릴 수 있어요."
+    )
     if not profiles and not evidence:
-        return f"「{q}」에 대해 표시할 검색 본문이 없습니다."
+        return (
+            f"No searchable body text for 「{q}」."
+            if _en
+            else f"「{q}」에 대해 표시할 검색 본문이 없습니다."
+        )
     return "\n".join(lines).rstrip()
 
 

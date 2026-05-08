@@ -24,6 +24,8 @@ from app.db.repositories.kprint_qa_quickmenu_repository import (
     quickmenu_row_to_dict,
 )
 from app.rag.search_service import run_vector_search
+from app.rag.faq import FaqSearchService
+from app.rag.pipeline import engine as _sync_search_db_engine
 
 router = APIRouter(tags=["embedding-tool"])
 logger = logging.getLogger(__name__)
@@ -193,6 +195,8 @@ async def embedding_tool_search(
     chunk_type: str = Form(default="all"),
     answer_mode: str = Form(default="template"),
     openai_model: str = Form(default="gpt-5-mini"),
+    faq_only: str | None = Form(default=None),
+    faq_user: str | None = Form(default=None),
     intent_use_openai: str | None = Form(default=None),
     retrieval_min_queries: str | None = Form(default=None),
     retrieval_max_queries: str | None = Form(default=None),
@@ -219,6 +223,8 @@ async def embedding_tool_search(
             openai_base_url=resolve_openai_base_url(),
             embedding_remote_base_url=remote,
             session_id=session_id,
+            faq_only=bool(_form_optional_bool(faq_only)),
+            faq_user=(faq_user or "").strip() or None,
             intent_use_openai=_form_optional_bool(intent_use_openai),
             retrieval_min_queries=_form_optional_int("retrieval_min_queries", retrieval_min_queries),
             retrieval_max_queries=_form_optional_int("retrieval_max_queries", retrieval_max_queries),
@@ -242,6 +248,46 @@ async def embedding_tool_search(
         (payload.get("answer_meta") or {}).get("mode"),
     )
     return JSONResponse(payload)
+
+
+@router.get("/tools/embedding/api/faq-debug", include_in_schema=False)
+def faq_debug(
+    query: str = Query(...),
+    qa_user: str | None = Query(default=None),
+    faq_only: bool = Query(default=False),
+) -> JSONResponse:
+    """FAQ 검색 디버그용(점수 breakdown 포함). embedding/pgvector/LLM 사용 금지."""
+
+    service = FaqSearchService(engine=_sync_search_db_engine)
+    payload = service.search_and_build_payload(
+        query=query,
+        qa_user=(qa_user or "").strip() or None,
+        faq_only=bool(faq_only),
+        trace_id="faq-debug",
+        no_match_message="(debug) no match",
+    )
+    if payload is None:
+        return JSONResponse(
+            {
+                "raw_query": query,
+                "qa_user": qa_user,
+                "matched": False,
+            }
+        )
+    meta = (payload.get("answer_meta") or {}) if isinstance(payload, dict) else {}
+    return JSONResponse(
+        {
+            "raw_query": query,
+            "qa_user": qa_user,
+            "matched": True,
+            "mode": meta.get("mode"),
+            "qna_code": meta.get("qna_code"),
+            "scores": meta.get("scores"),
+            "trace": meta.get("trace"),
+            "answer_preview": str(payload.get("answer") or "")[:200],
+            "payload": payload,
+        }
+    )
 
 
 # --- QA 퀵메뉴 (kprint_qa_quickmenu): 메인 1차 버튼 + follow 링크 조회 -----------------
