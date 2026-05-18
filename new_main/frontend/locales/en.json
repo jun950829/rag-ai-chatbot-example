@@ -1,0 +1,26 @@
+{
+  "common": {
+    "goToHome": "Go to Home",
+    "noData": "No data found",
+    "copyToClipboard": "Copied to clipboard"
+  },
+  "notfound": "Sorry, we couldn't find the page.<br>You may have entered an incorrect address,</br><br> or the page you requested has been moved or deleted.</br>",
+  "meta": {
+    "title": "Exmatch AI",
+    "description": "Exmatch AI Assistant",
+    "keywords": ["Exmatch", "AI", "Chat"],
+    "home": {
+      "title": "Exmatch AI",
+      "description": "Exmatch AI Assistant",
+      "keywords": ["Exmatch", "AI", "Chat"]
+    }
+  },
+  "chat": {
+    "placeholder": "Ask me anything.",
+    "catalog": "Product / Company Search",
+    "faq_visitor": "Visitor FAQ",
+    "faq_exhibitor": "Exhibitor FAQ",
+    "streaming": "Generating answer...",
+    "error": "Something went wrong. Please try again."
+  }
+}

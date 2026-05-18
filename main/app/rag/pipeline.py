@@ -19,7 +19,6 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import logging
 import os
 import sys
 import uuid
@@ -33,7 +32,9 @@ from typing import Any, Callable, Literal, Optional
 
 import sqlalchemy as sa
 
-logger = logging.getLogger(__name__)
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # app/rag/pipeline.py -> repo root is two levels above this file

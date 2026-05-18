@@ -29,13 +29,19 @@ import ingest_db_env  # noqa: E402
 
 ingest_db_env.ensure_sync_database_url(main_root=MAIN_ROOT)
 
-from app.company.helpers import apply_company_fields, find_company_by_external_id
-from app.company.models import Company
-from app.company.serializers import CompanyCreate
 from app.db import SessionLocal
-from app.product.helpers import apply_product_fields, find_product_by_external_id
-from app.product.models import Product
-from app.product.serializers import ProductCreate
+from app.models.company import (
+    Company,
+    CompanyCreate,
+    apply_company_fields,
+    find_company_by_external_id,
+)
+from app.models.product import (
+    Product,
+    ProductCreate,
+    apply_product_fields,
+    find_product_by_external_id,
+)
 
 
 DEMO_COMPANY_EXTERNAL_ID = "demo-company-001"

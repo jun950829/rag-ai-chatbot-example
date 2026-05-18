@@ -551,22 +551,36 @@
             resolveFn = resolve;
             rejectFn = reject;
             const es = new EventSource("/stream/" + encodeURIComponent(requestId));
-            es.addEventListener("token", function (evt) {
+            function onStreamText(evt) {
               const piece = parseSsePayloadData(evt.data);
               const add = typeof piece === "string" ? piece : String(piece || "");
               fullText += add;
               ensureBotBox();
               statusEl.textContent = "응답을 작성하는 중...";
               startDrainIfNeeded();
-            });
-            es.addEventListener("cards", function (evt) {
+            }
+            function onStreamCards(evt) {
               const cards = parseSsePayloadData(evt.data);
               if (Array.isArray(cards) && cards.length) {
                 ensureBotBox();
                 renderSuggestionCarousel(botBox, cards);
                 log.scrollTop = log.scrollHeight;
               }
+            }
+            es.addEventListener("delta", onStreamText);
+            es.addEventListener("token", onStreamText);
+            es.addEventListener("final", function (evt) {
+              const raw = parseSsePayloadData(evt.data);
+              var t = typeof raw === "string" ? raw : String(raw || "");
+              if (t) {
+                fullText = t;
+                ensureBotBox();
+                statusEl.textContent = "응답을 작성하는 중...";
+                startDrainIfNeeded();
+              }
             });
+            es.addEventListener("citation", onStreamCards);
+            es.addEventListener("cards", onStreamCards);
             es.addEventListener("done", function () {
               doneReceived = true;
               es.close();

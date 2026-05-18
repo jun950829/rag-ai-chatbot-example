@@ -1160,15 +1160,15 @@
             resolveFn = resolve;
             rejectFn = reject;
             const es = new EventSource("/stream/" + encodeURIComponent(requestId));
-            es.addEventListener("token", function (evt) {
+            function onStreamText(evt) {
               const piece = parseSsePayloadData(evt.data);
               const add = typeof piece === "string" ? piece : String(piece || "");
               fullText += add;
               ensureBotBox();
               statusEl.textContent = "응답을 작성하는 중...";
               startDrainIfNeeded();
-            });
-            es.addEventListener("cards", function (evt) {
+            }
+            function onStreamCards(evt) {
               const cards = parseSsePayloadData(evt.data);
               if (Array.isArray(cards) && cards.length) {
                 cardsSeen = true;
@@ -1176,16 +1176,31 @@
                 renderSuggestionCarousel(botBox, cards);
                 scheduleStickyScroll();
               }
-            });
-            es.addEventListener("followups", function (evt) {
-              // 참가 기업/제품(RAG) 모드에서는 follow-ups 이벤트를 무시한다.
+            }
+            function onFollowups(evt) {
               if (currentMode === "rag") return;
               const items = parseSsePayloadData(evt.data);
               if (Array.isArray(items) && items.length) {
                 ensureBotBox();
                 renderFollowupButtons(botBox, items);
               }
+            }
+            es.addEventListener("delta", onStreamText);
+            es.addEventListener("token", onStreamText);
+            es.addEventListener("final", function (evt) {
+              const raw = parseSsePayloadData(evt.data);
+              var t = typeof raw === "string" ? raw : String(raw || "");
+              if (t) {
+                fullText = t;
+                ensureBotBox();
+                statusEl.textContent = "응답을 작성하는 중...";
+                startDrainIfNeeded();
+              }
             });
+            es.addEventListener("citation", onStreamCards);
+            es.addEventListener("cards", onStreamCards);
+            es.addEventListener("recommendation", onFollowups);
+            es.addEventListener("followups", onFollowups);
             es.addEventListener("done", function () {
               doneReceived = true;
               es.close();

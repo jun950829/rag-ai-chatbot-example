@@ -8,14 +8,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.product.helpers import (
+from app.models.product import (
+    Product,
+    ProductCreate,
+    ProductListItem,
+    ProductRead,
+    ProductUpdate,
     apply_product_fields,
     apply_product_filters,
     ensure_company_exists,
     find_product_by_external_id,
 )
-from app.product.models import Product
-from app.product.serializers import ProductCreate, ProductListItem, ProductRead, ProductUpdate
 
 
 router = APIRouter(prefix="/products", tags=["products"])

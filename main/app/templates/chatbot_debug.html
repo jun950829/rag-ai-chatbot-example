@@ -69,8 +69,15 @@
         function streamAnswer(requestId) {
           return new Promise((resolve, reject) => {
             const es = new EventSource("/stream/" + encodeURIComponent(requestId));
+            es.addEventListener("delta", function (evt) {
+              answerEl.textContent += parseSsePayloadData(evt.data) || "";
+            });
             es.addEventListener("token", function (evt) {
-              answerEl.textContent += (answerEl.textContent ? " " : "") + evt.data;
+              answerEl.textContent += parseSsePayloadData(evt.data) || "";
+            });
+            es.addEventListener("final", function (evt) {
+              var t = parseSsePayloadData(evt.data);
+              if (typeof t === "string" && t) answerEl.textContent = t;
             });
             es.addEventListener("done", function () {
               es.close();

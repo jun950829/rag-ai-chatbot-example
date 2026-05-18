@@ -16,6 +16,16 @@ from worker.intent_signals import looks_like_general_faq
 from worker.llm import classify_intent_heuristic, stream_text_tokens
 from worker.queue import WorkerQueue
 from worker.router_openai import openai_refine_worker_routing_intent
+from worker.sse_events import (
+    EVENT_CITATION,
+    EVENT_DELTA,
+    EVENT_DONE,
+    EVENT_ERROR,
+    EVENT_RECOMMENDATION,
+    EVENT_RETRIEVAL,
+    EVENT_STAGE,
+    stream_payload_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +207,17 @@ async def llm_consumer(redis: Redis) -> None:
                 )
 
             logger.info("[worker] intent=%s heuristic=%s (prev=%s)", intent, intent_heuristic, prev_intent or "-")
+            await redis.rpush(
+                stream_key,
+                stream_payload_json(
+                    EVENT_STAGE,
+                    {
+                        "name": "intent_classification",
+                        "intent_routing": intent,
+                        "intent_heuristic": intent_heuristic,
+                    },
+                ),
+            )
             await _trace(
                 redis,
                 request_id=request_id,
@@ -227,6 +248,10 @@ async def llm_consumer(redis: Redis) -> None:
                 intent == "general" and looks_like_general_faq(job["message"])
             )
             if run_retrieval:
+                await redis.rpush(
+                    stream_key,
+                    stream_payload_json(EVENT_STAGE, {"name": "retrieval", "status": "started"}),
+                )
                 await _trace(
                     redis,
                     request_id=request_id,
@@ -239,8 +264,20 @@ async def llm_consumer(redis: Redis) -> None:
                 raw_cards = payload.get("suggestion_cards")
                 suggestion_cards = raw_cards if isinstance(raw_cards, list) else []
                 followups = payload.get("follow_up_questions")
+                retr = payload.get("retrieval") if isinstance(payload, dict) else {}
+                await redis.rpush(
+                    stream_key,
+                    stream_payload_json(
+                        EVENT_RETRIEVAL,
+                        {
+                            "intent": retr.get("intent") if isinstance(retr, dict) else None,
+                            "result_count": len(payload.get("results") or []),
+                            "response_mode": retr.get("response_mode") if isinstance(retr, dict) else None,
+                        },
+                    ),
+                )
                 if isinstance(followups, list) and followups:
-                    await redis.rpush(stream_key, json.dumps({"event": "followups", "data": followups}, ensure_ascii=False))
+                    await redis.rpush(stream_key, stream_payload_json(EVENT_RECOMMENDATION, followups))
                 logger.info(
                     "[worker] retrieval path done request_id=%s cards=%d",
                     request_id,
@@ -256,6 +293,10 @@ async def llm_consumer(redis: Redis) -> None:
             else:
                 answer = _heuristic_answer(intent)
                 logger.info("[worker] heuristic-only answer request_id=%s", request_id)
+                await redis.rpush(
+                    stream_key,
+                    stream_payload_json(EVENT_STAGE, {"name": "heuristic_response", "intent": intent}),
+                )
                 await _trace(
                     redis,
                     request_id=request_id,
@@ -264,27 +305,24 @@ async def llm_consumer(redis: Redis) -> None:
                     detail=f"{intent} 규칙 응답 완료",
                 )
 
-            # 최종 답변을 토큰 단위로 흘려 SSE로 전달한다.
             await _trace(
                 redis,
                 request_id=request_id,
                 stage="sse_stream",
                 status="started",
-                detail="SSE 토큰 스트리밍 시작",
+                detail="SSE delta 스트리밍 시작",
             )
+            await redis.rpush(stream_key, stream_payload_json(EVENT_STAGE, {"name": "answer_stream", "status": "started"}))
             async for token in stream_text_tokens(answer):
-                await redis.rpush(stream_key, json.dumps({"event": "token", "data": token}, ensure_ascii=False))
+                await redis.rpush(stream_key, stream_payload_json(EVENT_DELTA, token))
 
             if suggestion_cards:
-                await redis.rpush(
-                    stream_key,
-                    json.dumps({"event": "cards", "data": suggestion_cards}, ensure_ascii=False),
-                )
+                await redis.rpush(stream_key, stream_payload_json(EVENT_CITATION, suggestion_cards))
 
             await redis.set(cache_key, answer, ex=600)
             if session_intent_key:
                 await redis.set(session_intent_key, intent, ex=3600)
-            await redis.rpush(stream_key, json.dumps({"event": "done", "data": "[DONE]"}, ensure_ascii=False))
+            await redis.rpush(stream_key, stream_payload_json(EVENT_DONE, "[DONE]"))
             await redis.expire(stream_key, 600)
             await _trace(
                 redis,
@@ -306,8 +344,8 @@ async def llm_consumer(redis: Redis) -> None:
                 job["retries"] = retries + 1
                 await queue.requeue(settings.llm_queue_name, job)
             else:
-                await redis.rpush(stream_key, json.dumps({"event": "error", "data": str(exc)}, ensure_ascii=False))
-                await redis.rpush(stream_key, json.dumps({"event": "done", "data": "[DONE]"}, ensure_ascii=False))
+                await redis.rpush(stream_key, stream_payload_json(EVENT_ERROR, str(exc)))
+                await redis.rpush(stream_key, stream_payload_json(EVENT_DONE, "[DONE]"))
 
 
 async def _upsert_embeddings(document_id: str, chunks: list[str], vectors: list[list[float]]) -> None:

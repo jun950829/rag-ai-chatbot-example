@@ -8,12 +8,12 @@
 
 from __future__ import annotations
 
-import logging
 import re
 
+from app.core.logger import get_logger
 from app.rag.faq_canonical import FAQ_CANONICAL_MAP
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 FAQ_STOPWORDS: set[str] = {

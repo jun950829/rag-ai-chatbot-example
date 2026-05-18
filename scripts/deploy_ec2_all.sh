@@ -5,8 +5,10 @@
 #   ./scripts/deploy_ec2_all.sh
 #   REMOTE_MAIN=user@host REMOTE_EMBED=user@host2 SSH_IDENTITY=~/.ssh/key.pem ./scripts/deploy_ec2_all.sh
 #
-# 두 번째 서버 건너뛰기:
-#   SKIP_EMBEDDING=1 ./scripts/deploy_ec2_all.sh
+# 이 스크립트는 기본적으로 **아무것도 생략하지 않고** 배포한다.
+# - new_main frontend_old_version npm build 수행
+# - main(api) 반영
+# - embedding(worker) 반영
 #
 # 이미지 전체 재빌드(느리지만 확실):
 #   REBUILD_MAIN=1 ./scripts/deploy_ec2_all.sh
@@ -22,7 +24,6 @@ REMOTE_MAIN="${REMOTE_MAIN:-exmatch2604@52.64.112.27}"
 REMOTE_EMBED="${REMOTE_EMBED:-exmatch2604@15.135.211.14}"
 REPO_ROOT="${REPO_ROOT:-rag-ai-chatbot-example}"
 REPO_ROOT="${REPO_ROOT%/}"
-SKIP_EMBEDDING="${SKIP_EMBEDDING:-0}"
 REBUILD_MAIN="${REBUILD_MAIN:-0}"
 REBUILD_EMBED="${REBUILD_EMBED:-0}"
 
@@ -73,16 +74,39 @@ rsync_common_excludes=(
 # 원격 .env 유지
 rsync_env_exclude=(--exclude '.env')
 
+build_chatbot_frontend() {
+  if [[ ! -f "$ROOT/new_main/frontend_old_version/package.json" ]]; then
+    return 0
+  fi
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "오류: npm 이 없어 new_main 프론트 빌드를 수행할 수 없습니다. Node/npm 설치 후 다시 실행하세요." >&2
+    exit 1
+  fi
+  echo "==> build new_main frontend: frontend_old_version (→ new_main/frontend_old_version/dist)"
+  (cd "$ROOT/new_main/frontend_old_version" && npm ci && npm run build)
+}
+
 deploy_main() {
+  build_chatbot_frontend
+
   local remote="$REMOTE_MAIN"
-  echo "==> rsync main/ → $remote:$REPO_ROOT/main/"
+  echo "==> ensure remote dir: $remote:$REPO_ROOT/new_main/"
+  "${SSH_CMD[@]}" "$remote" bash -s "$REPO_ROOT" <<'REMOTE_DIR'
+set -euo pipefail
+REPO_ROOT="${1:-rag-ai-chatbot-example}"
+if [[ "$REPO_ROOT" != /* ]]; then REPO_ROOT="$HOME/$REPO_ROOT"; fi
+mkdir -p "$REPO_ROOT/new_main"
+REMOTE_DIR
+  echo "==> rsync new_main/ → $remote:$REPO_ROOT/new_main/"
   # rsync 원격 상대경로(선행 슬래시 없음) = 해당 호스트 사용자 홈 기준 (kprint_ingest_ec2_main 과 동일)
   rsync -avz -e "$RSYNC_RSH" \
     "${rsync_common_excludes[@]}" "${rsync_env_exclude[@]}" \
     --exclude 'frontend/node_modules/' \
-    "$ROOT/main/" "$remote:$REPO_ROOT/main/"
+    --exclude 'frontend/.next/' \
+    --exclude 'frontend_old_version/node_modules/' \
+    "$ROOT/new_main/" "$remote:$REPO_ROOT/new_main/"
 
-  echo "==> remote main: api 컨테이너 반영 + 재시작 ($remote)"
+  echo "==> remote main: new_main api 컨테이너 반영 + 재시작 ($remote)"
   "${SSH_CMD[@]}" "$remote" bash -s "$REPO_ROOT" "$REBUILD_MAIN" <<'REMOTE_MAIN'
 set -euo pipefail
 REPO_ROOT="${1:-rag-ai-chatbot-example}"
@@ -90,29 +114,49 @@ REBUILD="${2:-0}"
 if [[ "$REPO_ROOT" != /* ]]; then REPO_ROOT="$HOME/$REPO_ROOT"; fi
 
 if [[ "$REBUILD" == "1" ]]; then
-  cd "$REPO_ROOT/main" || { echo "오류: $REPO_ROOT/main 없음" >&2; exit 1; }
+  cd "$REPO_ROOT/new_main" || { echo "오류: $REPO_ROOT/new_main 없음" >&2; exit 1; }
   docker compose -f docker-compose.ec2-1.yml build api
   docker compose -f docker-compose.ec2-1.yml up -d api
-  echo "main: compose build+up api 완료"
+  echo "new_main: compose build+up api 완료"
   exit 0
 fi
 
-CID="$(docker ps -q --filter publish=8000 | head -n1)"
+# compose 스택의 api만 쓰면 REDIS_URL=redis://redis / POSTGRES_DSN=...@postgres 가 DNS로 풀린다.
+# publish=8000 만 보면 compose 밖에서 띄운 다른 컨테이너를 집을 수 있어 redis/postgres 이름 해석이 실패한다.
+COMPOSE_DIR="$REPO_ROOT/new_main"
+CID=""
+if [[ -f "$COMPOSE_DIR/docker-compose.ec2-1.yml" ]]; then
+  CID="$(cd "$COMPOSE_DIR" && docker compose -f docker-compose.ec2-1.yml ps -q api 2>/dev/null | head -n1 || true)"
+fi
 if [[ -z "${CID:-}" ]]; then
-  echo "오류: publish=8000 인 api 컨테이너 없음. REBUILD_MAIN=1 또는 docker ps 확인." >&2
+  CID="$(docker ps -q --filter publish=8000 | head -n1 || true)"
+fi
+if [[ -z "${CID:-}" ]]; then
+  echo "오류: new_main compose 의 api 컨테이너를 찾지 못했습니다. $COMPOSE_DIR 에서 docker compose -f docker-compose.ec2-1.yml up -d 또는 REBUILD_MAIN=1 로 기동하세요." >&2
   exit 1
 fi
 echo "Using api container: $CID"
 # /srv/main/app 가 이미 있으면 ``docker cp .../app DEST`` 는 DEST/app/ 하위에 또 app 이 생겨
-# 런타임은 /srv/main/app/rag/... 를 쓰므로 반드시 디렉터리 *내용*을 덮어쓴다.
-docker cp "$REPO_ROOT/main/app/." "$CID:/srv/main/app/"
+# 런타임은 /srv/main/app/... 를 쓰므로 반드시 디렉터리 *내용*을 덮어쓴다.
+docker cp "$REPO_ROOT/new_main/app/." "$CID:/srv/main/app/"
+# 프론트 dist도 함께 갱신 (frontend_old_version/dist → 컨테이너 /srv/main/frontend/dist)
+if [[ -d "$REPO_ROOT/new_main/frontend_old_version/dist" ]]; then
+  docker cp "$REPO_ROOT/new_main/frontend_old_version/dist/." "$CID:/srv/main/frontend/dist/"
+fi
 docker restart "$CID"
-echo "main: docker cp app + restart 완료 ($CID)"
+echo "new_main: docker cp app(+dist) + restart 완료 ($CID)"
 REMOTE_MAIN
 }
 
 deploy_embed() {
   local remote="$REMOTE_EMBED"
+  echo "==> ensure remote dir: $remote:$REPO_ROOT/embedding/"
+  "${SSH_CMD[@]}" "$remote" bash -s "$REPO_ROOT" <<'REMOTE_DIR'
+set -euo pipefail
+REPO_ROOT="${1:-rag-ai-chatbot-example}"
+if [[ "$REPO_ROOT" != /* ]]; then REPO_ROOT="$HOME/$REPO_ROOT"; fi
+mkdir -p "$REPO_ROOT/embedding"
+REMOTE_DIR
   echo "==> rsync embedding/ → $remote:$REPO_ROOT/embedding/"
   rsync -avz -e "$RSYNC_RSH" \
     "${rsync_common_excludes[@]}" "${rsync_env_exclude[@]}" \
@@ -168,10 +212,6 @@ REMOTE_EMBED
 }
 
 deploy_main
-if [[ "$SKIP_EMBEDDING" != "1" ]]; then
-  deploy_embed
-else
-  echo "==> SKIP_EMBEDDING=1 — 임베딩 호스트 건너뜀"
-fi
+deploy_embed
 
 echo "배포 스크립트 종료 OK."

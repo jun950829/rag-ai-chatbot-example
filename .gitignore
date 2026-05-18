@@ -24,7 +24,23 @@ env/
 # Build artifacts
 build/
 dist/
+main/app/static/chatbot-ui/
 *.egg-info/
+
+# Frontend (Vite/React)
+main/frontend/node_modules/
+main/frontend/.vite/
+main/frontend/npm-debug.log*
+main/frontend/yarn-debug.log*
+main/frontend/yarn-error.log*
+main/frontend/pnpm-debug.log*
+main/frontend/.env
+main/frontend/.env.local
+main/frontend/.env.*.local
+**/node_modules/
+**/.next/
+**/.next/**
+**/dist/
 
 # IDE / OS
 .DS_Store
@@ -37,3 +53,6 @@ tmp/
 data/
 dumps/
 model_cache/
+
+**/.next/
+**/dist/

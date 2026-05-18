@@ -11,7 +11,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.kprint_qa_quickmenu import KprintQaQuickmenu
+from app.models.kprint.qa_quickmenu import KprintQaQuickmenu
 
 
 def _dedupe_codes(codes: list[str | None]) -> list[str]:

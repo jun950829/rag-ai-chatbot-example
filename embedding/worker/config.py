@@ -38,6 +38,11 @@ class WorkerSettings(BaseSettings):
     llm_trace_prefix: str = "trace:llm:"
     embed_result_prefix: str = "result:embed:"
 
+    embedding_service_url: str = Field(
+        default="http://127.0.0.1:8765",
+        description="임베딩 HTTP API 서버 주소 (faq_embed 등 일괄 처리 스크립트 전용)",
+    )
+
     embed_batch_size: int = 32
     max_retry: int = 3
     retrieval_model_id: str = "Qwen/Qwen3-Embedding-0.6B"

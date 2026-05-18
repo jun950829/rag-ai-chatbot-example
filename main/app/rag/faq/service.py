@@ -5,15 +5,16 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from sqlalchemy import text
 
+from app.core.logger import get_logger
+
 from .retriever import FaqRetriever
 from app.rag.faq_normalizer import normalize_faq_query as normalize_faq_query_dict
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FaqSearchService:

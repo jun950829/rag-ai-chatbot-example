@@ -24,7 +24,7 @@ import ingest_db_env  # noqa: E402
 ingest_db_env.ensure_sync_database_url(main_root=MAIN_ROOT)
 
 from app.db import SessionLocal  # noqa: E402
-from app.kprint.models import KprintExhibitor as KobaExhibitor  # noqa: E402
+from app.models.kprint.catalog import KprintExhibitor as KobaExhibitor  # noqa: E402
 
 
 def _clean_excel_export_value(value: str | None) -> str | None:
