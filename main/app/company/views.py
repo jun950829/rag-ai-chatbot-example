@@ -7,10 +7,17 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.company.helpers import apply_company_fields, apply_company_filters, find_company_by_external_id
-from app.company.models import Company
-from app.company.serializers import CompanyCreate, CompanyDetail, CompanyListItem, CompanyUpdate
 from app.db import get_session
+from app.models.company import (
+    Company,
+    CompanyCreate,
+    CompanyDetail,
+    CompanyListItem,
+    CompanyUpdate,
+    apply_company_fields,
+    apply_company_filters,
+    find_company_by_external_id,
+)
 
 
 router = APIRouter(prefix="/companies", tags=["companies"])

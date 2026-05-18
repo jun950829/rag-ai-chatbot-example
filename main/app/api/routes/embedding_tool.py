@@ -12,13 +12,13 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import logging
 import os
 from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import get_settings, resolve_openai_api_key, resolve_openai_base_url
+from app.core.logger import get_logger
 from app.db.repositories.kprint_qa_quickmenu_repository import (
     KprintQaQuickmenuRepository,
     quickmenu_row_to_dict,
@@ -28,7 +28,7 @@ from app.rag.faq import FaqSearchService
 from app.rag.pipeline import engine as _sync_search_db_engine
 
 router = APIRouter(tags=["embedding-tool"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
 

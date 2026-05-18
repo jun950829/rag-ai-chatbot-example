@@ -7,3 +7,14 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+
+  embed_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "9000:9000"
+    command: ["python", "-m", "worker.api_main"]
+    restart: unless-stopped

@@ -38,7 +38,7 @@ from sqlalchemy import delete, func, select  # noqa: E402
 from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: E402
 
 from app.db import SessionLocal  # noqa: E402
-from app.db.models.kprint_qa_quickmenu import KprintQaQuickmenu  # noqa: E402
+from app.models.kprint.qa_quickmenu import KprintQaQuickmenu  # noqa: E402
 
 
 def _strip(value: str | None) -> str | None:

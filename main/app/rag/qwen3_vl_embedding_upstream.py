@@ -3,7 +3,8 @@ import torch
 import torch.nn.functional as F
 import unicodedata
 import numpy as np
-import logging
+
+from app.core.logger import get_logger
 
 from PIL import Image
 from urllib.parse import urlparse
@@ -17,7 +18,7 @@ from transformers.utils import TransformersKwargs
 from transformers.cache_utils import Cache
 from qwen_vl_utils.vision_process import process_vision_info
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Constants for configuration
 MAX_LENGTH = 8192

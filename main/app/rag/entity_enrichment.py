@@ -8,13 +8,14 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any, Iterable
 
 from sqlalchemy import text
 
-logger = logging.getLogger(__name__)
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def infer_entity_type_from_table(table_name: str) -> str:

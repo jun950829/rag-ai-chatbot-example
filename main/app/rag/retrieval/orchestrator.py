@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from functools import partial
 from time import perf_counter
 from typing import Any
 
+from app.core.logger import get_logger
 from app.rag.retrieval.intent import (
     INTENT_LABELS,
     LANGUAGE_LABELS,
@@ -24,7 +24,7 @@ from app.rag.retrieval.planning import generate_search_plan_v2
 from app.rag.retrieval.search import semantic_rrf_cutoff_bundle_sync
 from app.rag.retrieval.types import RetrievalConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def execute_retrieval_pipeline(

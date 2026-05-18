@@ -7,16 +7,17 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from sqlalchemy import text
+
+from app.core.logger import get_logger
 
 from .models import FaqCandidate, FaqSearchResult
 from .normalize import normalize_faq_query
 from .reranker import compute_rerank_score
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FaqRetriever:

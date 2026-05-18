@@ -3,6 +3,8 @@
 이 문서는 **현재 이 저장소에서 “챗봇”이 동작하는 경로**를 한곳에 정리한다.  
 (이름은 챗봇이지만, 실제로는 **Redis 큐형 스트리밍 챗**, **동기 RAG 검색 UI**, **저장형 FAQ 카테고리 UI(Test_AI, /tools/chatbot 내 통합)** 가 있다.)
 
+**서버·함수·순서만 따른 프로세스 표**는 [`CHATBOT_PROCESS_FLOW.md`](./CHATBOT_PROCESS_FLOW.md)를 본다.
+
 ---
 
 ## 1. 전체 그림
@@ -109,8 +111,8 @@ flowchart TB
 
 | 단계 | 설명 |
 |------|------|
-| 질문 등록 | `POST /chat` (`main/app/api/routes/chatbot.py`) — 본문을 Redis 리스트 큐에 JSON으로 push |
-| 스트림 | `GET /stream/{request_id}` — 워커가 다른 리스트에 쌓은 토큰/이벤트를 SSE로 소비 |
+| 질문 등록 | `POST /chat` (`main/app/routers/chatbot.py`, 하위 호환 `api/routes/chatbot.py`) — 본문을 Redis 리스트 큐에 JSON으로 push |
+| 스트림 | `GET /stream/{request_id}` — Redis 리스트의 SSE: `stage`, `retrieval`, `citation`, `delta`, `final`(캐시 히트), `recommendation`, `done`, `error` (프론트는 레거시 `token`/`cards`/`followups` 도 구독) |
 | 캐시 | 동일 질문 SHA 캐시 키로 Redis GET → 히트 시 즉시 done 이벤트 |
 | 워커 | 이 저장소 밖의 프로세스가 `llm_queue_name` 을 소비한다고 가정 (구현은 배포 쪽) |
 

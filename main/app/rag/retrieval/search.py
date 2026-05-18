@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-from app.rag.pipeline import embed_queries_text, embed_query_text, search_embedding_tables
+from app.core.logger import get_logger
+from app.embeddings.client import embed_queries_text, embed_query_text
+from app.rag.pipeline import search_embedding_tables
 from app.rag.retrieval.types import RetrievalConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def semantic_rrf_cutoff_bundle_sync(

@@ -1,0 +1,68 @@
+# API·Redis·Postgres는 반드시 같은 사용자 정의 네트워크(backend)에 붙여
+# 서비스 이름 redis / postgres 가 컨테이너 DNS로 풀리게 한다.
+#
+# redis 이름이 안 풀리면(-3): API 컨테이너가 이 compose 스택이 아닐 수 있음.
+#   docker compose -f docker-compose.ec2-1.yml ps
+#   docker compose -f docker-compose.ec2-1.yml exec api python -c "import socket; print(socket.gethostbyname('redis'))"
+# 그다음: docker compose -f docker-compose.ec2-1.yml up -d --force-recreate
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_ENDPOINT: "http://localhost:8000"
+    ports:
+      - "3001:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - backend
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - backend
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: chatbot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./app/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    restart: unless-stopped
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  pg_data:
