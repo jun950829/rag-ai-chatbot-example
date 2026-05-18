@@ -260,15 +260,7 @@ uvicorn embedding.main:app --reload --host 0.0.0.0 --port 8765
 - DB 스키마는 **Alembic 리비전**으로만 변경 (수동 DDL 최소화)
 - 배치 임베딩·인덱스 갱신을 기본으로, 실시간 갱신은 필요 시 추가
 
----
-
-## 커밋·브랜치 (팀 규칙)
-
-컨벤셔널 커밋: `feat:`, `fix:`, `chore:`, `refactor:`
-
-단계별 브랜치 예: `feat/foundation`, `feat/ingestion`, `feat/embeddings`, `feat/retrieval`, `feat/chat-runtime`
-
----
+--- 
 
 ## 레거시 / 참고
 
